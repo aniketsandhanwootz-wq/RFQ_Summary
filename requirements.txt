@@ -1,0 +1,14 @@
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+httpx>=0.27
+tenacity>=8.3
+langchain-core>=0.2.35
+langchain-google-genai>=1.0.10
+rich>=13.7
+
+# Part-2 parsers
+pymupdf>=1.24
+openpyxl>=3.1
+pillow>=10.0
+pytesseract>=0.3.10

@@ -1,0 +1,78 @@
+{
+  "rfq_title": "Baba 2 - SS Lobe Pin",
+  "customer_name": "Baba",
+  "standard": "CE",
+  "geography": "UK",
+  "industry": "Fittings & Hardware",
+  "product_name": "M8 Lobe Pin - SS A2",
+  "product_qty": "4000 or MOQ",
+  "product_details": "**Specification:** TX20 Pin Security Head Screw (Custom)\n\nThread: M8 × 1.25 pitch; Overall Length: 12 mm; Head Height: 4 mm; Threaded Length: 8 mm (12 − 4)\n\nStainless Steel A2 (Plain / Natural SS)",
+  "attachment_findings": [
+    {
+      "url": "https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/ARzoymvBNIgO6RcvRk7l/pub/ZCSciV8flnH3TsD2s4IQ/RFQ-SS%20Lobe%20Pin.xlsx",
+      "kind": "excel",
+      "summary": "Excel analyzed. Sheets: 1.\n- Sheet 'BABA': tables_detected=1",
+      "data": {
+        "sheets": [
+          {
+            "sheet": "BABA",
+            "tables_detected": 1,
+            "tables": [
+              {
+                "header": [
+                  "",
+                  "",
+                  "Part Number",
+                  "Name",
+                  "Dimensions",
+                  "Material",
+                  "Coating / Finish",
+                  "Quantity",
+                  "Weight/pcs (gm)",
+                  "Price/pcs",
+                  "Lead Time (Weeks)",
+                  "Remarks"
+                ],
+                "rows_sample": [
+                  [
+                    "",
+                    "",
+                    "CFD01-104",
+                    "TX20 Pin Security Head Screw (Custom)",
+                    "Thread: M8 × 1.25 pitch; Overall Length: 12 mm; Head Height: 4 mm; Threaded Length: 8 mm (12 − 4)",
+                    "Stainless Steel A2",
+                    "N/A (Plain / Natural SS)",
+                    "4000"
+                  ]
+                ],
+                "row_count_sampled": 1,
+                "start_row": 3,
+                "end_row": 4
+              }
+            ]
+          }
+        ],
+        "embedded_images": []
+      }
+    },
+    {
+      "url": "https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/ARzoymvBNIgO6RcvRk7l/pub/i2OhDI9ExDIPInwx0LXp/Lobe%20Pin.pdf",
+      "kind": "pdf",
+      "summary": "PDF analyzed (1 page(s)). Low selectable text; used OCR on rendered pages.\nTop OCR excerpts:\nTX20 6 Lobe Pin Security Head\n\nwoot” work\n\nDelhi | Pune | Dublin | London\n\nMaterial :\n\nFinish :\n\nPROJECT:\n\nStainless Steel A2\n\nN/A\n\nNPDOS1\n\nUNLESS OTHERWISE SPECIFIED:\n\nDIMENSIONS ARE IN MILLIMETERS .\nTOLERANCES: +/-0.15mm Sca le .\n\nDo Not Scale\n\nDEBUR AND BREAK ALL SHARP EDGES\n\nPROJECT MACH CODE SHEET OF REV\n\n= 4 =\nM8x1.25 Thread\nDesigned By : Date : 24/02/25\nChecked By : Part # CFDO1-104\nCOPYRIGHT.\n\nThe information contained to this drawing is the sole property of wootz.work,\nand is confidential, may only be used for the purpose issued and not be\ndisclosed to third parties, copied or reprodu",
+      "data": {
+        "pages": 1,
+        "mode": "ocr",
+        "page_ocr_samples": [
+          {
+            "page": 1,
+            "text": "TX20 6 Lobe Pin Security Head\n\nwoot” work\n\nDelhi | Pune | Dublin | London\n\nMaterial :\n\nFinish :\n\nPROJECT:\n\nStainless Steel A2\n\nN/A\n\nNPDOS1\n\nUNLESS OTHERWISE SPECIFIED:\n\nDIMENSIONS ARE IN MILLIMETERS .\nTOLERANCES: +/-0.15mm Sca le .\n\nDo Not Scale\n\nDEBUR AND BREAK ALL SHARP EDGES\n\nPROJECT MACH CODE SHEET OF REV\n\n= 4 =\nM8x1.25 Thread\nDesigned By : Date : 24/02/25\nChecked By : Part # CFDO1-104\nCOPYRIGHT.\n\nThe information contained to this drawing is the sole property of wootz.work,\nand is confidential, may only be used for the purpose issued and not be\ndisclosed to third parties, copied or reproduced in any way.\n\nAll intellectual property rights pertaining to this drawing belong to Wootz.work\n\nAll DIMENSIONS ARE IN \"MM\"\nREMOVE ALL SHARP EDGES"
+          }
+        ]
+      }
+    }
+  ],
+  "web_findings": [],
+  "summary_md": "**RFQ Summary:**\n\n*   **Title:** Baba 2 - SS Lobe Pin\n*   **Customer:** Baba\n*   **Industry:** Fittings & Hardware\n*   **Geography:** UK\n*   **Standard:** CE\n*   **Product Name:** M8 Lobe Pin - SS A2\n*   **Quantity:** 4000 or MOQ\n\n**Technical Specifications:**\n\n*   **Part Number:** CFDO1-104\n*   **Material:** Stainless Steel A2\n*   **Finish:** N/A\n*   **Head Type:** TX20 6 Lobe Pin Security Head\n*   **Thread:** M8 x 1.25\n*   **Overall Length:** Unknown (not specified in attachments)\n*   **Head Height:** Unknown (not specified in attachments)\n*   **Threaded Length:** Unknown (not specified in attachments)\n*   **Tolerances:** +/-0.15mm\n\n**Missing Information & Risks:**\n\n*   **Critical Dimensions:** Specific dimensions for Overall Length, Head Height, and Threaded Length are not explicitly provided in the attachment analysis. This is a significant gap for manufacturing.\n*   **MOQ Definition:** The minimum order quantity (MOQ) is not defined.",
+  "structured": {},
+  "run_id": "023d548ae0"
+}
