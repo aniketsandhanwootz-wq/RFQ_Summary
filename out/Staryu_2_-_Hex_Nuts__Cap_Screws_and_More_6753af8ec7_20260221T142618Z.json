@@ -1,0 +1,26 @@
+{
+  "rfq_title": "Staryu 2 - Hex Nuts, Cap Screws and More",
+  "customer_name": "Staryu",
+  "standard": "DIN",
+  "geography": "UK",
+  "industry": "Fittings & Hardware",
+  "product_name": "Miscellaneous Fasteners",
+  "product_qty": "NA",
+  "product_details": "Specification:\n\nAll details shared in attached excel sheet and drawings\n\n<br><br>",
+  "attachment_findings": [
+    {
+      "url": "https://netorgft12597064-my.sharepoint.com/:f:/g/personal/tanmay_wootz_work/IgCRrBsoOMbtTobITlAgcDB8Adub8E6o39lo7MBCKqDojsM?e=LkWgrr",
+      "kind": "folder",
+      "summary": "Folder link detected (SharePoint/OneDrive). Deep traversal requires Microsoft Graph integration (next milestone).",
+      "data": {
+        "filename": "IgCRrBsoOMbtTobITlAgcDB8Adub8E6o39lo7MBCKqDojsM",
+        "action": "graph_required"
+      }
+    }
+  ],
+  "web_findings": [],
+  "summary_md": "**1) RFQ Summary**\n*   **Customer:** Staryu\n*   **Title:** Staryu 2 - Hex Nuts, Cap Screws and More\n*   **Product:** Miscellaneous Fasteners\n*   **Quantity:** NA (Details expected in attachments)\n*   **Region:** UK\n*   **Standard/Compliance:** DIN (REQUIRED / TO BE CONFIRMED)\n\n**2) Technical Specifications**\n*   **Fastener Types:** Hex Nuts, Cap Screws, and More (Specific types UNKNOWN, expected in attachments)\n*   **Dimensions:** UNKNOWN (Expected in attachments)\n*   **Material:** UNKNOWN (Expected in attachments)\n*   **Finish:** UNKNOWN (Expected in attachments)\n*   **Tolerances:** UNKNOWN (Expected in attachments)\n*   **Quantities per item:** UNKNOWN (Expected in attachments)\n\n**3) Missing Information & Risks**\n*   **Missing Information:**\n    *   Detailed technical specifications for all fasteners (types, dimensions, materials, finishes, tolerances).\n    *   Specific quantities for each fastener type.\n    *   Packaging requirements.\n    *   Delivery schedule/terms.\n*   **Risks:**\n    *   Inability to quote accurately due to inaccessible detailed specifications in the provided SharePoint/OneDrive folder link. Deep traversal of the folder requires further integration.\n\n**4) Evidence Notes**\n*   RFQ fields provided directly.\n*   Attachment Findings: Folder link detected (https://netorgft12597064-my.sharepoint.com/:f:/g/personal/tanmay_wootz_work/IgCRrBsoOMbtTobITlAgcDB8Adub8E6o39lo8MBCKqDojsM?e=LkWgrr). Details are expected within this folder, but contents are currently inaccessible.",
+  "structured": {},
+  "run_id": "6753af8ec7",
+  "web_used": false
+}

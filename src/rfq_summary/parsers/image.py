@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
 import base64
+from io import BytesIO
+from typing import Optional
 
 from PIL import Image  # type: ignore
-from io import BytesIO
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -31,11 +31,9 @@ def _ocr_text_from_pil_image(img: Image.Image) -> str:
         return ""
 
 
-def _gemini_caption(settings: Settings, img_bytes: bytes) -> str:
-    """
-    Optional vision caption using Gemini multimodal.
-    If your model/key doesn’t support vision, it will fail gracefully (caller handles).
-    """
+def _gemini_vision_text(settings: Settings, img_bytes: bytes, instruction: str) -> str:
+    if not settings.enable_gemini_vision_fallback:
+        return ""
     if not settings.gemini_api_key.strip():
         return ""
 
@@ -46,10 +44,9 @@ def _gemini_caption(settings: Settings, img_bytes: bytes) -> str:
     )
 
     b64 = base64.b64encode(img_bytes).decode("utf-8")
-    # LangChain Google GenAI supports "image_url" parts in HumanMessage content.
     msg = HumanMessage(
         content=[
-            {"type": "text", "text": "Describe this image for an RFQ. Extract any visible specs/dimensions/labels."},
+            {"type": "text", "text": instruction},
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
         ]
     )
@@ -58,30 +55,39 @@ def _gemini_caption(settings: Settings, img_bytes: bytes) -> str:
 
 
 def analyze_image_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFinding:
-    """
-    OCR + optional vision caption (Gemini).
-    """
     img = Image.open(BytesIO(data)).convert("RGB")
-
     ocr_text = _ocr_text_from_pil_image(img).strip()
 
-    caption = ""
-    try:
-        caption = _gemini_caption(settings, data)
-    except Exception:
-        caption = ""
+    vision = ""
+    # run vision if OCR is missing/too short
+    if len(ocr_text) < settings.min_ocr_chars_to_accept:
+        try:
+            vision = _gemini_vision_text(
+                settings,
+                data,
+                instruction=(
+                    "Extract any specs/dimensions/material/part numbers/notes visible in the image. "
+                    "Return concise bullet points."
+                ),
+            )
+        except Exception:
+            vision = ""
 
     summary_parts = []
-    if caption:
-        summary_parts.append(f"Vision caption: {caption}")
+    if vision:
+        summary_parts.append(f"Vision extraction:\n{vision}")
     if ocr_text:
         summary_parts.append(f"OCR text (partial): {ocr_text[:1200]}")
     if not summary_parts:
-        summary_parts.append("Image analyzed. No OCR/vision output available (OCR not installed or vision not enabled).")
+        summary_parts.append("Image analyzed. No OCR/vision output available.")
 
     return AttachmentFinding(
         url=url,
         kind="image",
-        summary="\n".join(summary_parts).strip(),
-        data={"has_ocr": bool(ocr_text), "has_caption": bool(caption)},
+        summary="\n\n".join(summary_parts).strip(),
+        data={
+            "has_ocr": bool(ocr_text),
+            "has_vision": bool(vision),
+            "ocr_chars": len(ocr_text),
+        },
     )

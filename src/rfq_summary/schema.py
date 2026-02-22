@@ -21,7 +21,6 @@ class ProductItem(BaseModel):
             urls.append(self.dwg)
         urls.extend(self.photo or [])
         urls.extend(self.files or [])
-        # dedupe, preserve order
         seen = set()
         out = []
         for u in urls:
@@ -33,20 +32,19 @@ class ProductItem(BaseModel):
 
 
 class InputPayload(BaseModel):
+    # IMPORTANT: Glide rowID
+    row_id: str = Field(default="", alias="rowID")  # Glide should send rowID
+
     title: str = Field(alias="Title")
     industry: str = Field(default="", alias="Industry")
     geography: str = Field(default="", alias="Geography")
     standard: str = Field(default="", alias="Standard")
     customer_name: str = Field(default="", alias="Customer name")
 
-    # comes as a JSON-string in your examples
     product_json: str = Field(default="{}", alias="Product_json")
 
-    # optional: extra prompt override
-    prompt: Optional[str] = None
-
-    # optional: allow explicit switch
-    enable_web_search: bool = False
+    # Optional: if you ever pass extracted text directly (Power Automate etc.)
+    extracted_attachment_text: str = Field(default="", alias="Extracted Attachment Text")
 
     product: Optional[ProductItem] = None
 
@@ -56,11 +54,8 @@ class InputPayload(BaseModel):
         if not raw:
             self.product = None
             return self
-        try:
-            obj = json.loads(raw)
-        except Exception as e:
-            raise ValueError(f"Product_json is not valid JSON string: {e}") from e
-        # normalize keys to match ProductItem aliases
+        obj = json.loads(raw)
+
         if "Name" not in obj and "name" in obj:
             obj["Name"] = obj["name"]
         if "Qty" not in obj and "qty" in obj:
@@ -69,13 +64,12 @@ class InputPayload(BaseModel):
             obj["Details"] = obj["details"]
         if "Dwg" not in obj and "dwg" in obj:
             obj["Dwg"] = obj["dwg"]
+
         self.product = ProductItem.model_validate(obj)
         return self
 
     def all_attachment_urls(self) -> List[str]:
-        if not self.product:
-            return []
-        return self.product.all_attachment_urls
+        return self.product.all_attachment_urls if self.product else []
 
 
 class WebFinding(BaseModel):
@@ -86,13 +80,16 @@ class WebFinding(BaseModel):
 
 class AttachmentFinding(BaseModel):
     url: str
-    kind: str  # pdf|image|excel|unknown|folder
+    kind: str
     summary: str
-    # optional structured payload
     data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OutputPayload(BaseModel):
+    run_id: str
+    mode: str  # "pricing" | "summary"
+    row_id: str
+
     rfq_title: str
     customer_name: str = ""
     standard: str = ""
@@ -103,13 +100,13 @@ class OutputPayload(BaseModel):
     product_qty: str = ""
     product_details: str = ""
 
-    # what we used
     attachment_findings: List[AttachmentFinding] = Field(default_factory=list)
     web_findings: List[WebFinding] = Field(default_factory=list)
 
-    # final answer
-    summary_md: str
-    structured: Dict[str, Any] = Field(default_factory=dict)
+    # parsed LLM outputs
+    pricing_estimate_text: str = ""
+    pricing_reasoning_text: str = ""
+    rfq_summary_text: str = ""
 
-    # bookkeeping
-    run_id: str
+    raw_model_output: str = ""
+    structured: Dict[str, Any] = Field(default_factory=dict)

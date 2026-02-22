@@ -1,34 +1,60 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from datetime import datetime
+
 from .config import Settings
-from .schema import OutputPayload
+from .schema import InputPayload, OutputPayload
+from .glide_client import glide_set_columns
+from .gsheet_logger import append_log_row, build_log_row
 
 
-def write_output(settings: Settings, out: OutputPayload) -> str:
+def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None:
     """
-    Returns the base path (without extension) for convenience.
+    Writes results to Glide columns and appends a log row in Google Sheets.
     """
-    mode = (settings.output_mode or "local").strip().lower()
-    if mode != "local":
-        raise NotImplementedError("Only OUTPUT_MODE=local is implemented in Part 1")
 
-    out_dir = Path(settings.output_dir).resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # 1) Glide writeback mapping
+    colvals = {}
+    if out.mode == "pricing":
+        # write estimate + reasoning
+        colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
+        colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
+    elif out.mode == "summary":
+        # write RFQ summary + also write pricing estimate (if present)
+        colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
+        if out.pricing_estimate_text:
+            colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text
+        # if you want OUTPUT2 to also go in reasoning column, uncomment:
+        # colvals[settings.glide_col_price_reasoning] = out.rfq_summary_text or ""
+    else:
+        raise RuntimeError(f"Unknown mode: {out.mode}")
 
-    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    safe_title = "".join([c if c.isalnum() or c in ("-", "_") else "_" for c in out.rfq_title])[:60]
-    base = out_dir / f"{safe_title}_{out.run_id}_{ts}"
+    glide_set_columns(settings, out.row_id, colvals)
 
-    # JSON
-    with open(str(base) + ".json", "w", encoding="utf-8") as f:
-        f.write(out.model_dump_json(indent=2))
+    # 2) Google Sheet logging (single row)
+    input_json = json.dumps(
+        {
+            "rowID": inp.row_id,
+            "Title": inp.title,
+            "Industry": inp.industry,
+            "Geography": inp.geography,
+            "Standard": inp.standard,
+            "Customer name": inp.customer_name,
+            "Product_json": inp.product_json,
+        },
+        ensure_ascii=False,
+    )
 
-    # Markdown
-    md = out.summary_md.strip() + "\n"
-    with open(str(base) + ".md", "w", encoding="utf-8") as f:
-        f.write(md)
+    extracted_text = inp.extracted_attachment_text or ""
+    output_text = out.raw_model_output or ""
 
-    return str(base)
+    row = build_log_row(
+        settings=settings,
+        mode=out.mode,
+        row_id=out.row_id,
+        input_json=input_json,
+        extracted_text=extracted_text,
+        output_text=output_text,
+        raw_model=out.raw_model_output or "",
+    )
+    append_log_row(settings, row)
