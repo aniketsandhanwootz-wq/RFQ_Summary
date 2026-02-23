@@ -37,16 +37,13 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
     colvals: Dict[str, str] = {}
 
     if out.mode == "pricing":
-        # Prompt 1: OUTPUT 1 -> Pricing estimate, OUTPUT 2 -> Pricing reasoning
         colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
         colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
 
     elif out.mode == "summary":
         # Updated Prompt 2: single output -> RFQ Summary ONLY
         colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
-
-        # IMPORTANT: do NOT touch pricing columns in summary mode
-        # (prevents overwriting PRfRY/jblXm)
+        # do NOT touch pricing columns in summary mode
 
     else:
         raise RuntimeError(f"Unknown mode: {out.mode}")

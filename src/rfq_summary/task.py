@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 from .config import Settings
 from .schema import InputPayload, OutputPayload, WebFinding
@@ -44,7 +44,24 @@ def _parse_single_output(model_text: str) -> str:
 
 def _products_for_prompt(payload: InputPayload) -> List[dict]:
     out: List[dict] = []
-    for p in payload.products:
+    # NOTE: your schema must provide payload.products (multi) OR at least payload.product (single).
+    # This code tolerates both.
+    products = getattr(payload, "products", None)
+    if products:
+        for p in products:
+            out.append(
+                {
+                    "sr_no": p.sr_no,
+                    "Name": p.name,
+                    "Qty": p.qty,
+                    "Details": p.details,
+                    "Dwg": p.dwg,
+                    "photo": p.photo,
+                    "files": p.files,
+                }
+            )
+    elif payload.product:
+        p = payload.product
         out.append(
             {
                 "sr_no": p.sr_no,
@@ -60,15 +77,14 @@ def _products_for_prompt(payload: InputPayload) -> List[dict]:
 
 
 def _build_user_prompt(prompt_template: str, payload: InputPayload, extracted_text: str) -> str:
-    # include BOTH original Product_json string and structured list
     rfq_json = {
         "Title": payload.title,
         "Industry": payload.industry,
         "Geography": payload.geography,
         "Standard": payload.standard,
         "Customer name": payload.customer_name,
-        "Product_json": payload.product_json,      # keep raw for traceability
-        "Products": _products_for_prompt(payload), # structured for multi-product handling
+        "Product_json": payload.product_json,       # raw traceability
+        "Products": _products_for_prompt(payload),  # structured for multi-product
         "rowID": payload.row_id,
     }
     return (
@@ -80,34 +96,47 @@ def _build_user_prompt(prompt_template: str, payload: InputPayload, extracted_te
 
 def _compact_product_text(payload: InputPayload) -> str:
     parts: List[str] = []
-    for p in payload.products[:8]:
+    products = getattr(payload, "products", None)
+    if products:
+        for p in products[:8]:
+            s = f"{p.name}".strip()
+            if p.qty:
+                s += f" | Qty: {p.qty}"
+            if p.details:
+                d = p.details.replace("\n", " ").strip()
+                s += f" | {d[:180]}"
+            if s:
+                parts.append(s)
+        if len(products) > 8:
+            parts.append(f"...(+{len(products) - 8} more items)")
+        return " || ".join(parts)
+
+    # single product fallback
+    if payload.product:
+        p = payload.product
         s = f"{p.name}".strip()
         if p.qty:
             s += f" | Qty: {p.qty}"
         if p.details:
             d = p.details.replace("\n", " ").strip()
             s += f" | {d[:180]}"
-        if s:
-            parts.append(s)
-    if len(payload.products) > 8:
-        parts.append(f"...(+{len(payload.products) - 8} more items)")
-    return " || ".join(parts)
+        return s
+    return ""
 
 
-def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
-    run_id = uuid.uuid4().hex[:10]
+def run_pricing(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
+    run_id = run_id or uuid.uuid4().hex[:10]
 
     attachment_findings = analyze_attachments(settings, payload.all_attachment_urls())
     extracted_text = _join_attachment_text(payload, attachment_findings)
 
     prompt_template = load_prompt_file(settings.prompt_pricing_file)
 
-    web_findings: List[WebFinding] = []
     q = (
         f"Wholesale unit pricing India for RFQ: {payload.title} | {payload.standard} | "
         f"{_compact_product_text(payload)}"
     )
-    web_findings = PerplexitySearchClient(settings).search(q)
+    web_findings: List[WebFinding] = PerplexitySearchClient(settings).search(q)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
@@ -122,8 +151,8 @@ def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
     )
     out1, out2 = _parse_two_outputs(model_text)
 
-    # For multi-product RFQs, keep header fields compact (writer doesn't rely on these)
     first = payload.product
+    products = getattr(payload, "products", None) or []
     return OutputPayload(
         run_id=run_id,
         mode="pricing",
@@ -133,7 +162,7 @@ def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
         standard=payload.standard,
         geography=payload.geography,
         industry=payload.industry,
-        product_name=(first.name if first else f"{len(payload.products)} item(s)"),
+        product_name=(first.name if first else (f"{len(products)} item(s)" if products else "")),
         product_qty=(first.qty if first else ""),
         product_details=(first.details if first else ""),
         attachment_findings=attachment_findings,
@@ -142,24 +171,23 @@ def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
         pricing_reasoning_text=out2,
         rfq_summary_text="",
         raw_model_output=model_text,
-        structured={"products_count": len(payload.products)},
+        structured={"products_count": (len(products) if products else (1 if first else 0))},
     )
 
 
-def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
-    run_id = uuid.uuid4().hex[:10]
+def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
+    run_id = run_id or uuid.uuid4().hex[:10]
 
     attachment_findings = analyze_attachments(settings, payload.all_attachment_urls())
     extracted_text = _join_attachment_text(payload, attachment_findings)
 
     prompt_template = load_prompt_file(settings.prompt_summary_file)
 
-    web_findings: List[WebFinding] = []
     q = (
         f"India supplier clusters and cost proxy guidance for RFQ: {payload.title} | {payload.standard} | "
         f"{_compact_product_text(payload)}"
     )
-    web_findings = PerplexitySearchClient(settings).search(q)
+    web_findings: List[WebFinding] = PerplexitySearchClient(settings).search(q)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
@@ -176,6 +204,7 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
     summary_out = _parse_single_output(model_text)
 
     first = payload.product
+    products = getattr(payload, "products", None) or []
     return OutputPayload(
         run_id=run_id,
         mode="summary",
@@ -185,7 +214,7 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
         standard=payload.standard,
         geography=payload.geography,
         industry=payload.industry,
-        product_name=(first.name if first else f"{len(payload.products)} item(s)"),
+        product_name=(first.name if first else (f"{len(products)} item(s)" if products else "")),
         product_qty=(first.qty if first else ""),
         product_details=(first.details if first else ""),
         attachment_findings=attachment_findings,
@@ -194,5 +223,5 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
         pricing_reasoning_text="",
         rfq_summary_text=summary_out,
         raw_model_output=model_text,
-        structured={"products_count": len(payload.products)},
+        structured={"products_count": (len(products) if products else (1 if first else 0))},
     )

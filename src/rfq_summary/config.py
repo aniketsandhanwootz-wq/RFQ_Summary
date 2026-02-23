@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     max_excel_cols: int = Field(default=40, alias="MAX_EXCEL_COLS")
     max_excel_tables_per_sheet: int = Field(default=5, alias="MAX_EXCEL_TABLES_PER_SHEET")
 
+    # Queue / Concurrency (same instance)
+    max_queue_size: int = Field(default=50, alias="MAX_QUEUE_SIZE")
+    max_concurrent_jobs: int = Field(default=2, alias="MAX_CONCURRENT_JOBS")
+    job_timeout_sec: int = Field(default=420, alias="JOB_TIMEOUT_SEC")  # safety kill (seconds)
+
     # Glide writeback (SAFETY: default off)
     enable_glide_writeback: bool = Field(default=False, alias="ENABLE_GLIDE_WRITEBACK")
 

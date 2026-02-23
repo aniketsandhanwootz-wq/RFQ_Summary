@@ -1,12 +1,30 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+import asyncio
+import json
+import uuid
+from dataclasses import dataclass
+from typing import Any, Dict, Literal, Optional
+
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import ValidationError
 
-from .config import load_settings
+from .config import load_settings, Settings
 from .schema import InputPayload
 from .task import run_pricing, run_summary
 from .writer import write_all
+from .gsheet_logger import log_job_event
+
+Mode = Literal["pricing", "summary"]
+
+
+@dataclass(frozen=True)
+class Job:
+    run_id: str
+    mode: Mode
+    payload: Dict[str, Any]  # raw request payload (already unwrapped)
+    row_id: str
+
 
 app = FastAPI(title="RFQ Summary Service", version="0.1.0")
 
@@ -21,7 +39,10 @@ def root():
     return {"ok": True, "service": "rfq-summary", "endpoints": ["/rfq/pricing", "/rfq/summary", "/health"]}
 
 
-def _require_row_id_if_writeback(settings, obj: InputPayload):
+# -----------------------
+# Payload helpers
+# -----------------------
+def _require_row_id_if_writeback(settings: Settings, obj: InputPayload):
     if settings.enable_glide_writeback and not (obj.row_id or "").strip():
         raise HTTPException(status_code=400, detail="Missing rowID/row_id in payload (required when writeback enabled).")
 
@@ -55,25 +76,184 @@ def _validate(payload: dict) -> InputPayload:
         raise HTTPException(status_code=422, detail=e.errors()) from e
 
 
+# -----------------------
+# In-memory queue + dispatcher
+# -----------------------
+def _get_queue() -> asyncio.Queue[Job]:
+    q = getattr(app.state, "job_queue", None)
+    if q is None:
+        q = asyncio.Queue()
+        app.state.job_queue = q
+    return q
+
+
+def _get_semaphore(settings: Settings) -> asyncio.Semaphore:
+    sem = getattr(app.state, "job_semaphore", None)
+    if sem is None:
+        sem = asyncio.Semaphore(max(1, int(settings.max_concurrent_jobs)))
+        app.state.job_semaphore = sem
+    return sem
+
+
+async def _run_job(job: Job) -> None:
+    settings = load_settings()
+
+    # Status: RUNNING
+    try:
+        log_job_event(settings, job.run_id, job.mode, job.row_id, status="RUNNING", message="Job started")
+    except Exception:
+        pass
+
+    try:
+        obj = _validate(job.payload)
+        _require_row_id_if_writeback(settings, obj)
+
+        # Execute with timeout (best-effort). Work runs in thread to avoid blocking event loop.
+        async def _do_work():
+            if job.mode == "pricing":
+                out = await asyncio.to_thread(run_pricing, settings, obj, job.run_id)
+            else:
+                out = await asyncio.to_thread(run_summary, settings, obj, job.run_id)
+
+            await asyncio.to_thread(write_all, settings, obj, out)
+
+        await asyncio.wait_for(_do_work(), timeout=max(30, int(settings.job_timeout_sec)))
+
+        # Status: DONE
+        try:
+            log_job_event(settings, job.run_id, job.mode, job.row_id, status="DONE", message="Job completed")
+        except Exception:
+            pass
+
+    except asyncio.TimeoutError:
+        try:
+            log_job_event(
+                settings,
+                job.run_id,
+                job.mode,
+                job.row_id,
+                status="FAILED",
+                message=f"Job timeout after {settings.job_timeout_sec}s",
+            )
+        except Exception:
+            pass
+
+    except Exception as e:
+        try:
+            log_job_event(
+                settings,
+                job.run_id,
+                job.mode,
+                job.row_id,
+                status="FAILED",
+                message=f"{type(e).__name__}: {e}",
+            )
+        except Exception:
+            pass
+
+
+async def _dispatcher_loop() -> None:
+    while True:
+        job = await _get_queue().get()
+        settings = load_settings()
+        sem = _get_semaphore(settings)
+
+        await sem.acquire()
+
+        async def _wrapped():
+            try:
+                await _run_job(job)
+            finally:
+                sem.release()
+
+        asyncio.create_task(_wrapped())
+
+
+@app.on_event("startup")
+async def _startup():
+    # start dispatcher exactly once
+    if getattr(app.state, "dispatcher_started", False):
+        return
+    app.state.dispatcher_started = True
+    asyncio.create_task(_dispatcher_loop())
+
+
+def _queue_size() -> int:
+    q = _get_queue()
+    # asyncio.Queue.qsize() is safe here
+    return q.qsize()
+
+
+async def _enqueue_or_reject(mode: Mode, data: dict, obj: InputPayload) -> Dict[str, Any]:
+    settings = load_settings()
+    max_q = max(1, int(settings.max_queue_size))
+
+    run_id = uuid.uuid4().hex[:10]
+    row_id = (obj.row_id or "").strip()
+
+    # Backpressure: reject if queue is full
+    if _queue_size() >= max_q:
+        # Log reject (so it’s not forgotten)
+        try:
+            payload_json = json.dumps(data, ensure_ascii=False)
+            log_job_event(
+                settings,
+                run_id=run_id,
+                mode=mode,
+                row_id=row_id,
+                status="REJECTED_QUEUE_FULL",
+                message=f"Queue full: qsize={_queue_size()} max={max_q}",
+                payload_json=payload_json,
+            )
+        except Exception:
+            pass
+
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "ok": False,
+                "run_id": run_id,
+                "status": "rejected",
+                "reason": "QUEUE_FULL",
+                "retry_hint": "Try again in 2-3 minutes.",
+            },
+        )
+
+    # Enqueue
+    job = Job(run_id=run_id, mode=mode, payload=data, row_id=row_id)
+    await _get_queue().put(job)
+
+    # Log queued
+    try:
+        log_job_event(settings, run_id, mode, row_id, status="QUEUED", message=f"Queued (qsize={_queue_size()}/{max_q})")
+    except Exception:
+        pass
+
+    return {"ok": True, "run_id": run_id, "status": "queued", "mode": mode, "queue": {"qsize": _queue_size(), "max": max_q}}
+
+
+# -----------------------
+# Endpoints
+# -----------------------
 @app.post("/rfq/pricing")
-def rfq_pricing(payload: dict):
+async def rfq_pricing(payload: dict, response: Response):
     settings = load_settings()
     data = _unwrap_payload(payload)
     obj = _validate(data)
     _require_row_id_if_writeback(settings, obj)
 
-    out = run_pricing(settings, obj)
-    write_all(settings, obj, out)
-    return {"ok": True, "run_id": out.run_id, "mode": out.mode}
+    ack = await _enqueue_or_reject("pricing", data, obj)
+    response.status_code = 202
+    return ack
 
 
 @app.post("/rfq/summary")
-def rfq_summary(payload: dict):
+async def rfq_summary(payload: dict, response: Response):
     settings = load_settings()
     data = _unwrap_payload(payload)
     obj = _validate(data)
     _require_row_id_if_writeback(settings, obj)
 
-    out = run_summary(settings, obj)
-    write_all(settings, obj, out)
-    return {"ok": True, "run_id": out.run_id, "mode": out.mode}
+    ack = await _enqueue_or_reject("summary", data, obj)
+    response.status_code = 202
+    return ack
