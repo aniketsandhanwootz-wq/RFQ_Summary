@@ -36,17 +36,23 @@ def append_rows(settings: Settings, rows: List[List[str]]) -> None:
         return
     if not settings.log_sheet_id or not settings.google_sa_json_b64:
         return
+    if not rows:
+        return
 
-    service = _sheet_service(settings)
-    rng = f"{settings.log_sheet_tab}!A:H"
-    body = {"values": rows}
-    service.spreadsheets().values().append(
-        spreadsheetId=settings.log_sheet_id,
-        range=rng,
-        valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
-        body=body,
-    ).execute()
+    try:
+        service = _sheet_service(settings)
+        rng = f"{settings.log_sheet_tab}!A:H"
+        body = {"values": rows}
+        service.spreadsheets().values().append(
+            spreadsheetId=settings.log_sheet_id,
+            range=rng,
+            valueInputOption="RAW",
+            insertDataOption="INSERT_ROWS",
+            body=body,
+        ).execute()
+    except Exception:
+        # Never crash the worker due to logging.
+        return
 
 
 def build_chunked_log_rows(
@@ -61,7 +67,7 @@ def build_chunked_log_rows(
       ts, run_id, mode, row_id, chunk_index, chunk_total, field_name, chunk_text
     """
     ts = _now_iso()
-    max_chars = settings.max_cell_chars
+    max_chars = int(settings.max_cell_chars)
 
     out_rows: List[List[str]] = []
     for field_name, text in fields.items():
@@ -79,27 +85,21 @@ def log_job_event(
     row_id: str,
     status: str,
     message: str = "",
-    payload_json: str = "",
 ) -> None:
     """
-    Logs status transitions:
-      QUEUED / RUNNING / DONE / FAILED / REJECTED_QUEUE_FULL
-    Stored as chunked rows (field_name = "job_event" and optional "payload_json").
+    Minimal status transitions only.
+    No payload logging here (avoid huge sheet writes).
     """
     if not settings.enable_sheets_logging:
         return
 
     event_text = f"STATUS={status}\n{message or ''}".strip()
 
-    fields: Dict[str, str] = {"job_event": event_text}
-    if payload_json:
-        fields["payload_json"] = payload_json
-
     rows = build_chunked_log_rows(
         settings=settings,
         run_id=run_id,
         mode=mode,
         row_id=row_id or "",
-        fields=fields,
+        fields={"job_event": event_text},
     )
     append_rows(settings, rows)

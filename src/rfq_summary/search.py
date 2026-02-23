@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -13,7 +14,7 @@ from .schema import WebFinding
 class PerplexitySearchClient:
     settings: Settings
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=6))
     def search(self, query: str) -> List[WebFinding]:
         key = (self.settings.perplexity_api_key or "").strip()
         if not key:
@@ -37,7 +38,9 @@ class PerplexitySearchClient:
             "temperature": 0.2,
         }
 
-        with httpx.Client(timeout=90) as client:
+        timeout = httpx.Timeout(connect=8.0, read=25.0, write=10.0, pool=10.0)
+
+        with httpx.Client(timeout=timeout) as client:
             r = client.post(url, headers=headers, json=payload)
             r.raise_for_status()
             data = r.json()
@@ -55,7 +58,7 @@ class PerplexitySearchClient:
             findings.append(WebFinding(title="Web summary", url="", snippet=text.strip()[:5000]))
 
         if isinstance(citations, list) and citations:
-            for c in citations[: self.settings.perplexity_max_results]:
+            for c in citations[: int(self.settings.perplexity_max_results)]:
                 if isinstance(c, str) and c.strip():
                     findings.append(WebFinding(title="Source", url=c.strip(), snippet=""))
 
