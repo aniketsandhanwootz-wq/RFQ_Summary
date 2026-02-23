@@ -1,10 +1,9 @@
 {
-  "rowID": "TEST_ROW_ID",
   "Title": "Baba 2 - SS Lobe Pin",
   "Industry": "Fittings & Hardware",
   "Geography": "UK",
   "Standard": "CE",
   "Customer name": "Baba",
-  "Product_json": "{\"sr_no\":1,\"Name\":\"M8 Lobe Pin - SS A2\",\"Qty\":\"4000 or MOQ\",\"Details\":\"TX20 pin security head screw, M8x1.25, Stainless A2. Need CE compliance confirmation.\",\"photo\":[],\"files\":[]}",
-  "Extracted Attachment Text": "No attachments for this test."
+  "Product_json": "{\"sr_no\":1,\"Name\":\"M8 Lobe Pin - SS A2\",\"Qty\":\"4000 or MOQ\",\"Details\":\"**Specification:** TX20 Pin Security Head Screw (Custom)\\nThread: M8 × 1.25 pitch; Overall Length: 12 mm; Head Height: 4 mm; Threaded Length: 8 mm\\nMaterial: Stainless Steel A2\",\"photo\":[],\"files\":[\"https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/ARzoymvBNIgO6RcvRk7l/pub/ZCSciV8flnH3TsD2s4IQ/RFQ-SS%20Lobe%20Pin.xlsx\",\"https://storage.googleapis.com/glide-prod.appspot.com/uploads-v2/ARzoymvBNIgO6RcvRk7l/pub/i2OhDI9ExDIPInwx0LXp/Lobe%20Pin.pdf\"]}",
+  "row_id": "TEST_ROW_ID"
 }

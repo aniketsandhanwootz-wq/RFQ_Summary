@@ -7,42 +7,54 @@ from pydantic import Field
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # LLM (Gemini)
-    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-1.5-flash", alias="GEMINI_MODEL")
-    gemini_model_fallbacks: str = Field(
-        default="gemini-1.5-flash,gemini-2.0-flash,gemini-2.0-flash-lite",
-        alias="GEMINI_MODEL_FALLBACKS",
+    # ========================
+    # LLM (Claude / Anthropic)
+    # ========================
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field(default="claude-3-5-sonnet-latest", alias="ANTHROPIC_MODEL")
+    anthropic_model_fallbacks: str = Field(
+        default="claude-3-5-sonnet-latest,claude-3-5-haiku-latest",
+        alias="ANTHROPIC_MODEL_FALLBACKS",
     )
 
     # Prompts (two endpoints)
     prompt_pricing_file: str = Field(default="prompts/pricing_estimate.md", alias="PROMPT_PRICING_FILE")
     prompt_summary_file: str = Field(default="prompts/rfq_summary.md", alias="PROMPT_SUMMARY_FILE")
 
-    # Perplexity
+    # ========================
+    # Web Search (Perplexity)
+    # ========================
     perplexity_api_key: str = Field(default="", alias="PERPLEXITY_API_KEY")
     perplexity_base_url: str = Field(default="https://api.perplexity.ai", alias="PERPLEXITY_BASE_URL")
     perplexity_model: str = Field(default="sonar", alias="PERPLEXITY_MODEL")
     perplexity_max_results: int = Field(default=6, alias="PERPLEXITY_MAX_RESULTS")
 
-    # Limits
+    # ========================
+    # Attachment parsing limits
+    # ========================
     max_attachment_bytes: int = Field(default=50 * 1024 * 1024, alias="MAX_ATTACHMENT_BYTES")
     max_pdf_pages: int = Field(default=60, alias="MAX_PDF_PAGES")
 
     min_pdf_text_chars_per_page: int = Field(default=40, alias="MIN_PDF_TEXT_CHARS_PER_PAGE")
     min_ocr_chars_to_accept: int = Field(default=80, alias="MIN_OCR_CHARS_TO_ACCEPT")
-    enable_gemini_vision_fallback: bool = Field(default=True, alias="ENABLE_GEMINI_VISION_FALLBACK")
+
+    # Claude Vision fallback (for low OCR / scanned pages)
+    enable_claude_vision_fallback: bool = Field(default=True, alias="ENABLE_CLAUDE_VISION_FALLBACK")
 
     max_excel_rows: int = Field(default=250, alias="MAX_EXCEL_ROWS")
     max_excel_cols: int = Field(default=40, alias="MAX_EXCEL_COLS")
     max_excel_tables_per_sheet: int = Field(default=5, alias="MAX_EXCEL_TABLES_PER_SHEET")
 
+    # ========================
     # Queue / Concurrency (same instance)
+    # ========================
     max_queue_size: int = Field(default=50, alias="MAX_QUEUE_SIZE")
     max_concurrent_jobs: int = Field(default=2, alias="MAX_CONCURRENT_JOBS")
-    job_timeout_sec: int = Field(default=420, alias="JOB_TIMEOUT_SEC")  # safety kill (seconds)
+    job_timeout_sec: int = Field(default=420, alias="JOB_TIMEOUT_SEC")  # safety kill
 
+    # ========================
     # Glide writeback (SAFETY: default off)
+    # ========================
     enable_glide_writeback: bool = Field(default=False, alias="ENABLE_GLIDE_WRITEBACK")
 
     glide_api_key: str = Field(default="", alias="GLIDE_API_KEY")
@@ -52,16 +64,15 @@ class Settings(BaseSettings):
     glide_col_price_estimate: str = Field(default="PRfRY", alias="GLIDE_COL_PRICE_ESTIMATE")
     glide_col_price_reasoning: str = Field(default="jblXm", alias="GLIDE_COL_PRICE_REASONING")
 
-    # Google Sheet logging (SAFETY: optional)
+    # ========================
+    # Google Sheet logging (optional)
+    # ========================
     enable_sheets_logging: bool = Field(default=True, alias="ENABLE_SHEETS_LOGGING")
     log_sheet_id: str = Field(default="", alias="LOG_SHEET_ID")
     log_sheet_tab: str = Field(default="Logs", alias="LOG_SHEET_TAB")
     google_sa_json_b64: str = Field(default="", alias="GOOGLE_SA_JSON_B64")
 
-    # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-
-    # Cell limits (Sheets cell practical limit)
     max_cell_chars: int = Field(default=50000, alias="MAX_CELL_CHARS")
 
 

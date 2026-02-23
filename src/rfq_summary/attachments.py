@@ -4,6 +4,7 @@ import mimetypes
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 from urllib.parse import urlparse
+
 import httpx
 
 from .config import Settings
@@ -15,10 +16,8 @@ from .parsers.image import analyze_image_bytes
 
 def _is_probably_ms_folder_link(url: str) -> bool:
     u = (url or "").lower()
-    # very common SharePoint folder share pattern
     if ":f:" in u:
         return True
-    # sometimes /:f:/ absent but "sharepoint.com" + query params indicate folder share
     return ("sharepoint.com" in u or "onedrive.live.com" in u) and ("?e=" in u or "cid=" in u) and ("folder" in u)
 
 
@@ -53,9 +52,18 @@ class HttpFetcher:
     def fetch(self, url: str) -> Tuple[bytes, Optional[str]]:
         max_bytes = int(self.settings.max_attachment_bytes)
 
-        with httpx.Client(timeout=90, follow_redirects=True) as client:
-            # HEAD best effort
+        headers = {
+            "User-Agent": "rfq-summary-bot/1.0",
+            "Accept": "*/*",
+        }
+
+        # Slightly lower timeout: avoids one attachment stalling the whole job forever
+        timeout = httpx.Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
+
+        with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
             content_type = None
+
+            # HEAD best effort (some hosts block HEAD; ignore failures)
             try:
                 h = client.head(url)
                 if h.status_code < 400:
@@ -93,7 +101,7 @@ def analyze_attachments(settings: Settings, urls: List[str]) -> List[AttachmentF
                     kind="folder",
                     summary=(
                         "Folder link detected (SharePoint/OneDrive). "
-                        "Deep traversal requires Microsoft Graph integration (next milestone)."
+                        "Deep traversal requires Microsoft Graph integration."
                     ),
                     data={"filename": _safe_filename_from_url(u), "action": "graph_required"},
                 )

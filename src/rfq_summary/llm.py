@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from .config import Settings
@@ -14,21 +14,28 @@ def load_prompt_file(path: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def generate_text(settings: Settings, system_prompt: str, user_prompt: str) -> str:
-    if not settings.gemini_api_key.strip():
-        raise RuntimeError("Missing GEMINI_API_KEY")
+def _models(settings: Settings) -> List[str]:
+    primary = (settings.anthropic_model or "").strip()
+    fallbacks = [m.strip() for m in (settings.anthropic_model_fallbacks or "").split(",") if m.strip()]
+    out = []
+    if primary:
+        out.append(primary)
+    out.extend([m for m in fallbacks if m and m not in out])
+    return out
 
-    models = [settings.gemini_model] + [
-        m.strip() for m in (settings.gemini_model_fallbacks or "").split(",") if m.strip()
-    ]
+
+def generate_text(settings: Settings, system_prompt: str, user_prompt: str) -> str:
+    if not (settings.anthropic_api_key or "").strip():
+        raise RuntimeError("Missing ANTHROPIC_API_KEY")
 
     last_err: Exception | None = None
-    for model in models:
+    for model in _models(settings):
         try:
-            llm = ChatGoogleGenerativeAI(
+            llm = ChatAnthropic(
                 model=model,
-                google_api_key=settings.gemini_api_key,
+                anthropic_api_key=settings.anthropic_api_key,
                 temperature=0.2,
+                max_tokens=1800,
             )
             resp = llm.invoke(
                 [
@@ -39,6 +46,5 @@ def generate_text(settings: Settings, system_prompt: str, user_prompt: str) -> s
             return (resp.content or "").strip()
         except Exception as e:
             last_err = e
-            continue
 
-    raise RuntimeError(f"All GEMINI models failed. Last error: {last_err}")
+    raise RuntimeError(f"All Claude models failed. Last error: {last_err}")
