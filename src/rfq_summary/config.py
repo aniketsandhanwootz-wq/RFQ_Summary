@@ -37,7 +37,9 @@ class Settings(BaseSettings):
     max_excel_cols: int = Field(default=40, alias="MAX_EXCEL_COLS")
     max_excel_tables_per_sheet: int = Field(default=5, alias="MAX_EXCEL_TABLES_PER_SHEET")
 
-    # Glide writeback
+    # Glide writeback (SAFETY: default off)
+    enable_glide_writeback: bool = Field(default=False, alias="ENABLE_GLIDE_WRITEBACK")
+
     glide_api_key: str = Field(default="", alias="GLIDE_API_KEY")
     glide_app_id: str = Field(default="", alias="GLIDE_APP_ID")
     glide_rfq_table: str = Field(default="", alias="GLIDE_RFQ_TABLE")
@@ -45,7 +47,8 @@ class Settings(BaseSettings):
     glide_col_price_estimate: str = Field(default="PRfRY", alias="GLIDE_COL_PRICE_ESTIMATE")
     glide_col_price_reasoning: str = Field(default="jblXm", alias="GLIDE_COL_PRICE_REASONING")
 
-    # Google Sheet logging
+    # Google Sheet logging (SAFETY: optional)
+    enable_sheets_logging: bool = Field(default=True, alias="ENABLE_SHEETS_LOGGING")
     log_sheet_id: str = Field(default="", alias="LOG_SHEET_ID")
     log_sheet_tab: str = Field(default="Logs", alias="LOG_SHEET_TAB")
     google_sa_json_b64: str = Field(default="", alias="GOOGLE_SA_JSON_B64")
@@ -53,7 +56,7 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    # Cell limits
+    # Cell limits (Sheets cell practical limit)
     max_cell_chars: int = Field(default=50000, alias="MAX_CELL_CHARS")
 
 

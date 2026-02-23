@@ -3,36 +3,43 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Dict, Iterable, Tuple
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 
 from .config import Settings
 
-
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
-def _clip(s: str, max_chars: int) -> str:
+def _chunks(s: str, size: int) -> List[str]:
     s = s or ""
-    if len(s) <= max_chars:
-        return s
-    return s[: max_chars - 60] + "\n\n...[TRUNCATED]..."
+    if size <= 0:
+        return [s]
+    return [s[i : i + size] for i in range(0, len(s), size)] or [""]
 
 
-def append_log_row(settings: Settings, values: List[str]) -> None:
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _sheet_service(settings: Settings):
+    sa_json = base64.b64decode(settings.google_sa_json_b64).decode("utf-8")
+    info = json.loads(sa_json)
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def append_rows(settings: Settings, rows: List[List[str]]) -> None:
+    if not settings.enable_sheets_logging:
+        return
     if not settings.log_sheet_id or not settings.google_sa_json_b64:
         return  # logging optional
 
-    sa_json = base64.b64decode(settings.google_sa_json_b64).decode("utf-8")
-    info = json.loads(sa_json)
-
-    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
-
-    rng = f"{settings.log_sheet_tab}!A:Z"
-    body = {"values": [values]}
+    service = _sheet_service(settings)
+    rng = f"{settings.log_sheet_tab}!A:H"
+    body = {"values": rows}
     service.spreadsheets().values().append(
         spreadsheetId=settings.log_sheet_id,
         range=rng,
@@ -42,16 +49,28 @@ def append_log_row(settings: Settings, values: List[str]) -> None:
     ).execute()
 
 
-def build_log_row(settings: Settings, mode: str, row_id: str, input_json: str, extracted_text: str, output_text: str, raw_model: str) -> List[str]:
-    ts = datetime.now(timezone.utc).isoformat()
-    m = settings.max_cell_chars
+def build_chunked_log_rows(
+    settings: Settings,
+    run_id: str,
+    mode: str,
+    row_id: str,
+    fields: Dict[str, str],
+) -> List[List[str]]:
+    """
+    Produces rows:
+      ts, run_id, mode, row_id, chunk_index, chunk_total, field_name, chunk_text
 
-    return [
-        ts,
-        mode,
-        row_id,
-        _clip(input_json, m),
-        _clip(extracted_text, m),
-        _clip(output_text, m),
-        _clip(raw_model, m),
-    ]
+    Ensures no cell exceeds max_cell_chars by chunking chunk_text.
+    """
+    ts = _now_iso()
+    max_chars = settings.max_cell_chars
+
+    out_rows: List[List[str]] = []
+
+    for field_name, text in fields.items():
+        parts = _chunks(text or "", max_chars)
+        total = len(parts)
+        for i, part in enumerate(parts, start=1):
+            out_rows.append([ts, run_id, mode, row_id or "", str(i), str(total), field_name, part])
+
+    return out_rows

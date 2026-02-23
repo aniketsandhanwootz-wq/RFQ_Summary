@@ -4,3 +4,11 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+zaiwootz-55fcca689abc.json
+
+.env
+out/
+inputs/
+*.egg-info/
+__pycache__/

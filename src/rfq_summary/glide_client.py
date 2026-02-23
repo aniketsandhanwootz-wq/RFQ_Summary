@@ -6,7 +6,7 @@ from .config import Settings
 
 def glide_set_columns(settings: Settings, row_id: str, column_values: dict) -> None:
     if not settings.glide_api_key or not settings.glide_app_id or not settings.glide_rfq_table:
-        raise RuntimeError("Missing GLIDE_* env vars (api_key/app_id/table).")
+        raise RuntimeError("Missing GLIDE_* env vars (GLIDE_API_KEY/GLIDE_APP_ID/GLIDE_RFQ_TABLE).")
 
     url = "https://api.glideapp.io/api/function/mutateTables"
     headers = {

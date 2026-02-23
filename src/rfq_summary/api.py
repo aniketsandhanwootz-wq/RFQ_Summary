@@ -14,12 +14,16 @@ def health():
     return {"ok": True}
 
 
+def _require_row_id_if_writeback(settings, obj: InputPayload):
+    if settings.enable_glide_writeback and not obj.row_id.strip():
+        raise HTTPException(status_code=400, detail="Missing rowID in payload (required when writeback enabled).")
+
+
 @app.post("/rfq/pricing")
 def rfq_pricing(payload: dict):
     settings = load_settings()
     obj = InputPayload.model_validate(payload)
-    if not obj.row_id.strip():
-        raise HTTPException(status_code=400, detail="Missing rowID in payload (required for Glide writeback).")
+    _require_row_id_if_writeback(settings, obj)
 
     out = run_pricing(settings, obj)
     write_all(settings, obj, out)
@@ -30,8 +34,7 @@ def rfq_pricing(payload: dict):
 def rfq_summary(payload: dict):
     settings = load_settings()
     obj = InputPayload.model_validate(payload)
-    if not obj.row_id.strip():
-        raise HTTPException(status_code=400, detail="Missing rowID in payload (required for Glide writeback).")
+    _require_row_id_if_writeback(settings, obj)
 
     out = run_summary(settings, obj)
     write_all(settings, obj, out)

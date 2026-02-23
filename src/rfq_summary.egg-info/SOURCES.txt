@@ -2,8 +2,11 @@ README.md
 pyproject.toml
 setup.py
 src/rfq_summary/__init__.py
+src/rfq_summary/api.py
 src/rfq_summary/attachments.py
 src/rfq_summary/config.py
+src/rfq_summary/glide_client.py
+src/rfq_summary/gsheet_logger.py
 src/rfq_summary/llm.py
 src/rfq_summary/run.py
 src/rfq_summary/schema.py
@@ -13,7 +16,6 @@ src/rfq_summary/writer.py
 src/rfq_summary.egg-info/PKG-INFO
 src/rfq_summary.egg-info/SOURCES.txt
 src/rfq_summary.egg-info/dependency_links.txt
-src/rfq_summary.egg-info/requires.txt
 src/rfq_summary.egg-info/top_level.txt
 src/rfq_summary/parsers/excel.py
 src/rfq_summary/parsers/image.py
