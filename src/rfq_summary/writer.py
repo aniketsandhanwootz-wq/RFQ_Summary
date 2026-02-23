@@ -20,9 +20,8 @@ def _print_terminal(out: OutputPayload) -> None:
         print("\n=== OUTPUT 2 (Reasoning) ===\n")
         print(out.pricing_reasoning_text or "")
     else:
-        print("=== OUTPUT 1 (Pricing Estimate) ===\n")
-        print(out.pricing_estimate_text or "")
-        print("\n=== OUTPUT 2 (Strategic Briefing / Summary) ===\n")
+        # Updated summary prompt: single output only
+        print("=== OUTPUT (Strategic Briefing & Nudges) ===\n")
         print(out.rfq_summary_text or "")
 
     print("\n==============================\n")
@@ -35,16 +34,20 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
     - Logging is chunked so we don't lose any data.
     """
 
-    # Prepare Glide column values (even if we skip writeback)
     colvals: Dict[str, str] = {}
 
     if out.mode == "pricing":
+        # Prompt 1: OUTPUT 1 -> Pricing estimate, OUTPUT 2 -> Pricing reasoning
         colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
         colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
+
     elif out.mode == "summary":
+        # Updated Prompt 2: single output -> RFQ Summary ONLY
         colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
-        if out.pricing_estimate_text:
-            colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
+
+        # IMPORTANT: do NOT touch pricing columns in summary mode
+        # (prevents overwriting PRfRY/jblXm)
+
     else:
         raise RuntimeError(f"Unknown mode: {out.mode}")
 
@@ -56,7 +59,7 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
     else:
         _print_terminal(out)
 
-    # 2) Build log fields (store everything; chunked rows will preserve all)
+    # 2) Build log fields (store everything; chunked rows preserve all)
     input_json = json.dumps(
         {
             "rowID": inp.row_id,

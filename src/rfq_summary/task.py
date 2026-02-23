@@ -40,6 +40,25 @@ def _parse_two_outputs(model_text: str) -> Tuple[str, str]:
     return "", t.strip()
 
 
+def _parse_single_output(model_text: str) -> str:
+    """
+    For updated summary prompt:
+      === OUTPUT : STRATEGIC BRIEFING & NUDGES ===
+    We treat everything after the first '=== OUTPUT' marker as the one output.
+    If the marker isn't present, fallback to the full text.
+    """
+    t = (model_text or "").strip()
+    if not t:
+        return ""
+
+    idx = t.find("=== OUTPUT")
+    if idx >= 0:
+        return t[idx:].strip()
+
+    # fallback: model didn't follow marker, still return content
+    return t
+
+
 def _build_user_prompt(prompt_template: str, payload: InputPayload, extracted_text: str) -> str:
     rfq_json = {
         "Title": payload.title,
@@ -65,10 +84,11 @@ def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
 
     prompt_template = load_prompt_file(settings.prompt_pricing_file)
 
-    # Web search is required for pricing prompt (live market)
-    # Use a single initial web query to prime context; prompt itself also says "use web".
     web_findings: List[WebFinding] = []
-    q = f"Wholesale unit pricing India for: {payload.title} | {payload.standard} | {payload.product.details if payload.product else ''}"
+    q = (
+        f"Wholesale unit pricing India for: {payload.title} | {payload.standard} | "
+        f"{payload.product.details if payload.product else ''}"
+    )
     web_findings = PerplexitySearchClient(settings).search(q)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
@@ -77,7 +97,11 @@ def run_pricing(settings: Settings, payload: InputPayload) -> OutputPayload:
             [f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings]
         )
 
-    model_text = generate_text(settings, system_prompt="You must follow the user instructions exactly.", user_prompt=user_prompt)
+    model_text = generate_text(
+        settings,
+        system_prompt="You must follow the user instructions exactly.",
+        user_prompt=user_prompt,
+    )
     out1, out2 = _parse_two_outputs(model_text)
 
     return OutputPayload(
@@ -110,9 +134,11 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
 
     prompt_template = load_prompt_file(settings.prompt_summary_file)
 
-    # Web search is required (pricing + standards context)
     web_findings: List[WebFinding] = []
-    q = f"India manufacturing cost proxy pricing for: {payload.title} | {payload.standard} | {payload.product.details if payload.product else ''}"
+    q = (
+        f"India manufacturing cost proxy pricing for: {payload.title} | {payload.standard} | "
+        f"{payload.product.details if payload.product else ''}"
+    )
     web_findings = PerplexitySearchClient(settings).search(q)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
@@ -121,12 +147,15 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
             [f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings]
         )
 
-    model_text = generate_text(settings, system_prompt="You must follow the user instructions exactly.", user_prompt=user_prompt)
-    out1, out2 = _parse_two_outputs(model_text)
+    model_text = generate_text(
+        settings,
+        system_prompt="You must follow the user instructions exactly.",
+        user_prompt=user_prompt,
+    )
 
-    # In summary prompt:
-    # OUTPUT 1 = pricing estimate
-    # OUTPUT 2 = strategic briefing & nudges  -> treat as RFQ Summary writeback
+    summary_out = _parse_single_output(model_text)
+
+    # Updated summary prompt returns only one output block.
     return OutputPayload(
         run_id=run_id,
         mode="summary",
@@ -141,9 +170,9 @@ def run_summary(settings: Settings, payload: InputPayload) -> OutputPayload:
         product_details=(payload.product.details if payload.product else ""),
         attachment_findings=attachment_findings,
         web_findings=web_findings,
-        pricing_estimate_text=out1,
-        pricing_reasoning_text="",  # optional: keep empty; we’ll write out2 to summary column
-        rfq_summary_text=out2,
+        pricing_estimate_text="",
+        pricing_reasoning_text="",
+        rfq_summary_text=summary_out,
         raw_model_output=model_text,
         structured={},
     )
