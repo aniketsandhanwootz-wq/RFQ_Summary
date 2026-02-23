@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, model_validator
+
+from pydantic import BaseModel, Field, model_validator, AliasChoices
 
 
 class ProductItem(BaseModel):
@@ -21,8 +22,9 @@ class ProductItem(BaseModel):
             urls.append(self.dwg)
         urls.extend(self.photo or [])
         urls.extend(self.files or [])
+        # dedupe preserve order
         seen = set()
-        out = []
+        out: List[str] = []
         for u in urls:
             u2 = (u or "").strip()
             if u2 and u2 not in seen:
@@ -31,9 +33,74 @@ class ProductItem(BaseModel):
         return out
 
 
+def _normalize_product_obj(obj: Dict[str, Any]) -> Dict[str, Any]:
+    # normalize common key variants
+    if "Name" not in obj and "name" in obj:
+        obj["Name"] = obj.get("name")
+    if "Qty" not in obj and "qty" in obj:
+        obj["Qty"] = obj.get("qty")
+    if "Details" not in obj and "details" in obj:
+        obj["Details"] = obj.get("details")
+    if "Dwg" not in obj and "dwg" in obj:
+        obj["Dwg"] = obj.get("dwg")
+    return obj
+
+
+def _parse_product_json_string(raw: str) -> List[Dict[str, Any]]:
+    """
+    Accept formats:
+      1) single object JSON: {...}
+      2) list JSON: [{...},{...}]
+      3) broken "multi object" string (not valid JSON) like:
+         {...}, {...}, {...}
+         -> we wrap into [ ... ] safely.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return []
+
+    # Try strict JSON first
+    try:
+        parsed = json.loads(s)
+        if isinstance(parsed, dict):
+            return [_normalize_product_obj(parsed)]
+        if isinstance(parsed, list):
+            out: List[Dict[str, Any]] = []
+            for it in parsed:
+                if isinstance(it, dict):
+                    out.append(_normalize_product_obj(it))
+            return out
+    except Exception:
+        pass
+
+    # Attempt repair for broken multi-object list
+    # Common case: "...}, {...}, {...}" (no surrounding [])
+    repaired = s
+    # If it looks like multiple objects, wrap as list
+    if repaired.startswith("{") and repaired.endswith("}") and "},{" in repaired.replace(" ", ""):
+        repaired = "[" + repaired + "]"
+    elif repaired.startswith("{") and "}, {" in repaired:
+        repaired = "[" + repaired + "]"
+
+    try:
+        parsed2 = json.loads(repaired)
+        if isinstance(parsed2, dict):
+            return [_normalize_product_obj(parsed2)]
+        if isinstance(parsed2, list):
+            out2: List[Dict[str, Any]] = []
+            for it in parsed2:
+                if isinstance(it, dict):
+                    out2.append(_normalize_product_obj(it))
+            return out2
+    except Exception:
+        return []
+
+    return []
+
+
 class InputPayload(BaseModel):
-    # IMPORTANT: Glide rowID
-    row_id: str = Field(default="", alias="rowID")  # Glide should send rowID
+    # Accept both rowID and row_id
+    row_id: str = Field(default="", validation_alias=AliasChoices("rowID", "row_id"))
 
     title: str = Field(alias="Title")
     industry: str = Field(default="", alias="Industry")
@@ -43,33 +110,37 @@ class InputPayload(BaseModel):
 
     product_json: str = Field(default="{}", alias="Product_json")
 
-    # Optional: if you ever pass extracted text directly (Power Automate etc.)
     extracted_attachment_text: str = Field(default="", alias="Extracted Attachment Text")
 
+    # New: support multiple products
+    products: List[ProductItem] = Field(default_factory=list)
+
+    # Backward compat: first product shortcut
     product: Optional[ProductItem] = None
 
     @model_validator(mode="after")
     def parse_product_json(self) -> "InputPayload":
         raw = (self.product_json or "").strip()
-        if not raw:
-            self.product = None
-            return self
-        obj = json.loads(raw)
 
-        if "Name" not in obj and "name" in obj:
-            obj["Name"] = obj["name"]
-        if "Qty" not in obj and "qty" in obj:
-            obj["Qty"] = obj["qty"]
-        if "Details" not in obj and "details" in obj:
-            obj["Details"] = obj["details"]
-        if "Dwg" not in obj and "dwg" in obj:
-            obj["Dwg"] = obj["dwg"]
+        items = _parse_product_json_string(raw)
+        self.products = [ProductItem.model_validate(it) for it in items] if items else []
 
-        self.product = ProductItem.model_validate(obj)
+        self.product = self.products[0] if self.products else None
         return self
 
     def all_attachment_urls(self) -> List[str]:
-        return self.product.all_attachment_urls if self.product else []
+        urls: List[str] = []
+        for p in self.products:
+            urls.extend(p.all_attachment_urls)
+        # dedupe preserve order
+        seen = set()
+        out: List[str] = []
+        for u in urls:
+            u2 = (u or "").strip()
+            if u2 and u2 not in seen:
+                seen.add(u2)
+                out.append(u2)
+        return out
 
 
 class WebFinding(BaseModel):
@@ -96,6 +167,7 @@ class OutputPayload(BaseModel):
     geography: str = ""
     industry: str = ""
 
+    # Keep these for compatibility, but in multi-product RFQs they'll be derived
     product_name: str = ""
     product_qty: str = ""
     product_details: str = ""
@@ -103,7 +175,6 @@ class OutputPayload(BaseModel):
     attachment_findings: List[AttachmentFinding] = Field(default_factory=list)
     web_findings: List[WebFinding] = Field(default_factory=list)
 
-    # parsed LLM outputs
     pricing_estimate_text: str = ""
     pricing_reasoning_text: str = ""
     rfq_summary_text: str = ""
