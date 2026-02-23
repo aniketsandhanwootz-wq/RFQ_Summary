@@ -14,6 +14,20 @@ from .parsers.excel import analyze_excel_bytes
 from .parsers.image import analyze_image_bytes
 
 
+def _clean_url(u: str) -> str:
+    s = (u or "").strip()
+    if not s:
+        return ""
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+    s = s.replace("\n", "").replace("\r", "").strip()
+    while s and s[-1] in (")", "]", "}", ","):
+        s = s[:-1].rstrip()
+    if " " in s:
+        s = s.replace(" ", "%20")
+    return s
+
+
 def _is_probably_ms_folder_link(url: str) -> bool:
     u = (url or "").lower()
     if ":f:" in u:
@@ -52,12 +66,7 @@ class HttpFetcher:
     def fetch(self, url: str) -> Tuple[bytes, Optional[str]]:
         max_bytes = int(self.settings.max_attachment_bytes)
 
-        headers = {
-            "User-Agent": "rfq-summary-bot/1.0",
-            "Accept": "*/*",
-        }
-
-        # Slightly lower timeout: avoids one attachment stalling the whole job forever
+        headers = {"User-Agent": "rfq-summary-bot/1.0", "Accept": "*/*"}
         timeout = httpx.Timeout(connect=15.0, read=45.0, write=15.0, pool=15.0)
 
         with httpx.Client(timeout=timeout, follow_redirects=True, headers=headers) as client:
@@ -90,7 +99,7 @@ def analyze_attachments(settings: Settings, urls: List[str]) -> List[AttachmentF
     fetcher = HttpFetcher(settings)
 
     for url in urls:
-        u = (url or "").strip()
+        u = _clean_url(url or "")
         if not u:
             continue
 

@@ -6,6 +6,35 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, model_validator, AliasChoices
 
 
+def _clean_url(u: str) -> str:
+    """
+    Normalize attachment URLs coming from Glide / user text.
+    - trims whitespace
+    - strips surrounding quotes
+    - replaces literal spaces with %20 (without touching already-encoded %20)
+    - drops trailing punctuation that often appears in pasted strings
+    """
+    s = (u or "").strip()
+    if not s:
+        return ""
+    # strip surrounding quotes
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+
+    # common trailing junk from copy-paste
+    while s and s[-1] in (")", "]", "}", ","):
+        s = s[:-1].rstrip()
+
+    # keep fragments; but remove whitespace around them
+    s = s.replace("\n", "").replace("\r", "").strip()
+
+    # only replace literal spaces (Glide sometimes passes them)
+    if " " in s:
+        s = s.replace(" ", "%20")
+
+    return s
+
+
 class ProductItem(BaseModel):
     sr_no: Optional[int] = None
     name: str = Field(default="", alias="Name")
@@ -22,11 +51,12 @@ class ProductItem(BaseModel):
             urls.append(self.dwg)
         urls.extend(self.photo or [])
         urls.extend(self.files or [])
-        # dedupe preserve order
+
+        # dedupe preserve order + clean
         seen = set()
         out: List[str] = []
         for u in urls:
-            u2 = (u or "").strip()
+            u2 = _clean_url(u or "")
             if u2 and u2 not in seen:
                 seen.add(u2)
                 out.append(u2)
@@ -54,6 +84,8 @@ def _parse_product_json_string(raw: str) -> List[Dict[str, Any]]:
       3) broken "multi object" string (not valid JSON) like:
          {...}, {...}, {...}
          -> we wrap into [ ... ] safely.
+
+    NOTE: We do best-effort repair; if still invalid, return [] (no crash).
     """
     s = (raw or "").strip()
     if not s:
@@ -74,13 +106,19 @@ def _parse_product_json_string(raw: str) -> List[Dict[str, Any]]:
         pass
 
     # Attempt repair for broken multi-object list
-    # Common case: "...}, {...}, {...}" (no surrounding [])
     repaired = s
-    # If it looks like multiple objects, wrap as list
-    if repaired.startswith("{") and repaired.endswith("}") and "},{" in repaired.replace(" ", ""):
-        repaired = "[" + repaired + "]"
-    elif repaired.startswith("{") and "}, {" in repaired:
-        repaired = "[" + repaired + "]"
+
+    # common: "{...}, {...}, {...}" -> "[{...}, {...}, {...}]"
+    # remove accidental trailing commas
+    repaired = repaired.strip().rstrip(",")
+
+    compact = repaired.replace("\n", " ").replace("\r", " ").strip()
+    compact_nospace = compact.replace(" ", "")
+
+    if compact.startswith("{") and compact.endswith("}") and "},{" in compact_nospace:
+        repaired = "[" + compact + "]"
+    elif compact.startswith("{") and "}, {" in compact:
+        repaired = "[" + compact + "]"
 
     try:
         parsed2 = json.loads(repaired)
@@ -112,7 +150,7 @@ class InputPayload(BaseModel):
 
     extracted_attachment_text: str = Field(default="", alias="Extracted Attachment Text")
 
-    # New: support multiple products
+    # Multi-product
     products: List[ProductItem] = Field(default_factory=list)
 
     # Backward compat: first product shortcut
@@ -121,10 +159,9 @@ class InputPayload(BaseModel):
     @model_validator(mode="after")
     def parse_product_json(self) -> "InputPayload":
         raw = (self.product_json or "").strip()
-
         items = _parse_product_json_string(raw)
-        self.products = [ProductItem.model_validate(it) for it in items] if items else []
 
+        self.products = [ProductItem.model_validate(it) for it in items] if items else []
         self.product = self.products[0] if self.products else None
         return self
 
@@ -132,11 +169,12 @@ class InputPayload(BaseModel):
         urls: List[str] = []
         for p in self.products:
             urls.extend(p.all_attachment_urls)
+
         # dedupe preserve order
         seen = set()
         out: List[str] = []
         for u in urls:
-            u2 = (u or "").strip()
+            u2 = _clean_url(u or "")
             if u2 and u2 not in seen:
                 seen.add(u2)
                 out.append(u2)
@@ -167,7 +205,6 @@ class OutputPayload(BaseModel):
     geography: str = ""
     industry: str = ""
 
-    # Keep these for compatibility, but in multi-product RFQs they'll be derived
     product_name: str = ""
     product_qty: str = ""
     product_details: str = ""

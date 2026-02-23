@@ -14,6 +14,7 @@
 5. **Calculation:** Multiply the estimated unit cost by the found (or assumed) quantity for each line item. Sum these totals to calculate the Grand Total Estimated Cost.
 
 **Output Format:**
+**CRITICAL:** Start your response with `=== OUTPUT 1: PRICING ESTIMATE ===` and include `=== OUTPUT 2: REASONING & ANALYSIS ===` later. Do not write anything before OUTPUT 1.
 You must return your final analysis strictly separated into the following two distinct outputs:
 
 **=== OUTPUT 1: PRICING ESTIMATE ===***(Provide only the requested items, quantities, and calculated costs here. Keep it clean and numerical.)*

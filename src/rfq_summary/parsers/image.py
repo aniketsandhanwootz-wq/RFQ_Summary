@@ -31,9 +31,11 @@ def _ocr_text_from_pil_image(img: Image.Image) -> str:
 
 
 def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) -> str:
-    if not settings.enable_claude_vision_fallback:
+    if not getattr(settings, "enable_claude_vision_fallback", False):
         return ""
-    if not (settings.anthropic_api_key or "").strip():
+    if not (getattr(settings, "anthropic_api_key", "") or "").strip():
+        return ""
+    if not (getattr(settings, "anthropic_model", "") or "").strip():
         return ""
 
     llm = ChatAnthropic(
@@ -45,7 +47,6 @@ def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) 
 
     b64 = base64.b64encode(img_bytes).decode("utf-8")
 
-    # Anthropic multimodal message format (supported by langchain-anthropic)
     msg = HumanMessage(
         content=[
             {"type": "text", "text": instruction},
@@ -62,7 +63,7 @@ def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) 
 
 def analyze_image_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFinding:
     img = Image.open(BytesIO(data)).convert("RGB")
-    ocr_text = _ocr_text_from_pil_image(img).strip()
+    ocr_text = (_ocr_text_from_pil_image(img) or "").strip()
 
     vision = ""
     if len(ocr_text) < settings.min_ocr_chars_to_accept:
@@ -77,6 +78,18 @@ def analyze_image_bytes(settings: Settings, url: str, data: bytes) -> Attachment
             )
         except Exception:
             vision = ""
+
+    # Build extracted_text (bounded) for task.py consumption
+    MAX_IMAGE_TEXT_CHARS = 25_000  # internal cap; no new env var
+    blocks = [f"## IMAGE: {url}"]
+    if vision.strip():
+        blocks.append("VISION:\n" + vision.strip())
+    if ocr_text.strip():
+        blocks.append("OCR:\n" + ocr_text.strip())
+
+    extracted_text = "\n\n".join(blocks).strip()
+    if len(extracted_text) > MAX_IMAGE_TEXT_CHARS:
+        extracted_text = extracted_text[: MAX_IMAGE_TEXT_CHARS - 80] + "\n\n...[TRUNCATED]..."
 
     summary_parts = []
     if vision:
@@ -94,5 +107,6 @@ def analyze_image_bytes(settings: Settings, url: str, data: bytes) -> Attachment
             "has_ocr": bool(ocr_text),
             "has_vision": bool(vision),
             "ocr_chars": len(ocr_text),
+            "extracted_text": extracted_text,  # IMPORTANT: used by task.py
         },
     )

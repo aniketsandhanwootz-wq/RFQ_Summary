@@ -12,24 +12,97 @@ from .llm import load_prompt_file, generate_text
 
 
 def _join_attachment_text(payload: InputPayload, attachment_findings) -> str:
+    # prefer externally provided extracted text if present
     if (payload.extracted_attachment_text or "").strip():
         return payload.extracted_attachment_text.strip()
 
-    blocks = []
+    blocks: List[str] = []
     for a in attachment_findings:
-        blocks.append(f"[{a.kind}] {a.url}\n{a.summary}\n")
+        # Prefer rich extracted text from parsers (excel/pdf/image)
+        extracted = ""
+        try:
+            extracted = (a.data or {}).get("extracted_text", "") or ""
+        except Exception:
+            extracted = ""
+
+        if extracted.strip():
+            blocks.append(f"[{a.kind}] {a.url}\n{extracted.strip()}\n")
+        else:
+            blocks.append(f"[{a.kind}] {a.url}\n{a.summary}\n")
+
     return "\n".join(blocks).strip()
 
 
 def _parse_two_outputs(model_text: str) -> Tuple[str, str]:
-    t = model_text or ""
-    i1 = t.find("=== OUTPUT 1")
-    i2 = t.find("=== OUTPUT 2")
+    """
+    Robustly parse OUTPUT 1 and OUTPUT 2.
+
+    Handles common variants:
+      - markdown headings like "## === OUTPUT 1: ..."
+      - "OUTPUT 2" missing due to truncation
+      - slightly different spacing/casing
+
+    Returns:
+      (out1, out2)
+    """
+    t = (model_text or "").strip()
+    if not t:
+        return "", ""
+
+    # Normalize for searching, but slice on original string indices when possible
+    t_low = t.lower()
+
+    # Find OUTPUT 1 marker (best effort)
+    candidates_1 = [
+        "=== output 1",
+        "## === output 1",
+        "# === output 1",
+        "output 1:",
+        "output 1 -",
+        "output 1 —",
+    ]
+    i1 = -1
+    for c in candidates_1:
+        j = t_low.find(c)
+        if j >= 0:
+            i1 = j
+            break
+
+    # Find OUTPUT 2 marker (best effort)
+    candidates_2 = [
+        "=== output 2",
+        "## === output 2",
+        "# === output 2",
+        "output 2:",
+        "output 2 -",
+        "output 2 —",
+    ]
+    i2 = -1
+    for c in candidates_2:
+        j = t_low.find(c)
+        if j >= 0:
+            i2 = j
+            break
+
+    # If both markers found and ordered, split cleanly
     if i1 >= 0 and i2 > i1:
         out1 = t[i1:i2].strip()
         out2 = t[i2:].strip()
         return out1, out2
-    return "", t.strip()
+
+    # If OUTPUT 1 exists but OUTPUT 2 missing (truncated), treat everything after OUTPUT 1 as out1
+    if i1 >= 0 and i2 < 0:
+        out1 = t[i1:].strip()
+        return out1, ""
+
+    # If OUTPUT 2 exists but OUTPUT 1 missing, treat everything before OUTPUT 2 as out1 (rare)
+    if i2 >= 0 and i1 < 0:
+        out1 = t[:i2].strip()
+        out2 = t[i2:].strip()
+        return out1, out2
+
+    # Fallback: no markers; return all as OUTPUT 2 (your previous behavior)
+    return "", t
 
 
 def _parse_single_output(model_text: str) -> str:
@@ -44,8 +117,6 @@ def _parse_single_output(model_text: str) -> str:
 
 def _products_for_prompt(payload: InputPayload) -> List[dict]:
     out: List[dict] = []
-    # NOTE: your schema must provide payload.products (multi) OR at least payload.product (single).
-    # This code tolerates both.
     products = getattr(payload, "products", None)
     if products:
         for p in products:
@@ -83,8 +154,8 @@ def _build_user_prompt(prompt_template: str, payload: InputPayload, extracted_te
         "Geography": payload.geography,
         "Standard": payload.standard,
         "Customer name": payload.customer_name,
-        "Product_json": payload.product_json,       # raw traceability
-        "Products": _products_for_prompt(payload),  # structured for multi-product
+        "Product_json": payload.product_json,        # raw traceability
+        "Products": _products_for_prompt(payload),   # structured multi-product
         "rowID": payload.row_id,
     }
     return (
@@ -111,7 +182,6 @@ def _compact_product_text(payload: InputPayload) -> str:
             parts.append(f"...(+{len(products) - 8} more items)")
         return " || ".join(parts)
 
-    # single product fallback
     if payload.product:
         p = payload.product
         s = f"{p.name}".strip()
@@ -140,9 +210,7 @@ def run_pricing(settings: Settings, payload: InputPayload, run_id: Optional[str]
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
-        user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join(
-            [f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings]
-        )
+        user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join([f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings])
 
     model_text = generate_text(
         settings,
@@ -191,9 +259,7 @@ def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str]
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
-        user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join(
-            [f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings]
-        )
+        user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join([f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings])
 
     model_text = generate_text(
         settings,
