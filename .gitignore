@@ -7,8 +7,6 @@ __pycache__/
 
 zaiwootz-55fcca689abc.json
 
-.env
-out/
-inputs/
-*.egg-info/
-__pycache__/
+
+*.egg-info
+__pycache__
