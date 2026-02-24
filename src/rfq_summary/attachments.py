@@ -30,9 +30,20 @@ def _clean_url(u: str) -> str:
 
 def _is_probably_ms_folder_link(url: str) -> bool:
     u = (url or "").lower()
+    try:
+        parsed = urlparse(url or "")
+        host = (parsed.hostname or "").lower()
+    except Exception:
+        host = ""
     if ":f:" in u:
         return True
-    return ("sharepoint.com" in u or "onedrive.live.com" in u) and ("?e=" in u or "cid=" in u) and ("folder" in u)
+    is_ms_host = (
+        host == "sharepoint.com"
+        or host.endswith(".sharepoint.com")
+        or host == "onedrive.live.com"
+        or host.endswith(".onedrive.live.com")
+    )
+    return is_ms_host and ("?e=" in u or "cid=" in u) and ("folder" in u)
 
 
 def _guess_kind(url: str, content_type: str | None) -> str:
