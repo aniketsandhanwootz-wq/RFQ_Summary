@@ -19,10 +19,19 @@ def _print_terminal(out: OutputPayload) -> None:
         print(out.pricing_estimate_text or "")
         print("\n=== OUTPUT 2 (Reasoning) ===\n")
         print(out.pricing_reasoning_text or "")
-    else:
-        # Updated summary prompt: single output only
-        print("=== OUTPUT (Strategic Briefing & Nudges) ===\n")
+    elif out.mode == "summary":
+        print("=== OUTPUT (RFQ Summary) ===\n")
         print(out.rfq_summary_text or "")
+    elif out.mode == "all":
+        print("=== OUTPUT 1 (Pricing Estimate) ===\n")
+        print(out.pricing_estimate_text or "")
+        print("\n=== OUTPUT 2 (Reasoning) ===\n")
+        print(out.pricing_reasoning_text or "")
+        print("\n=== OUTPUT 3 (RFQ Summary) ===\n")
+        print(out.rfq_summary_text or "")
+    else:
+        print("=== OUTPUT ===\n")
+        print(out.raw_model_output or "")
 
     print("\n==============================\n")
 
@@ -41,9 +50,13 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
         colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
 
     elif out.mode == "summary":
-        # Updated Prompt 2: single output -> RFQ Summary ONLY
         colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
-        # do NOT touch pricing columns in summary mode
+
+    elif out.mode == "all":
+        # write all 3 columns in one shot
+        colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
+        colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
+        colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
 
     else:
         raise RuntimeError(f"Unknown mode: {out.mode}")

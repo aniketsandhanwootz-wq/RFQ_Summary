@@ -291,3 +291,98 @@ def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str]
         raw_model_output=model_text,
         structured={"products_count": (len(products) if products else (1 if first else 0))},
     )
+
+def run_all(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
+    """
+    Run pricing + summary in ONE job.
+    - Attachments are downloaded/parsed ONCE.
+    - Websearch happens twice (pricing query, summary query) as requested.
+    - Two separate Claude calls (two prompts).
+    - Returns a single OutputPayload with all three output fields populated.
+    """
+    run_id = run_id or uuid.uuid4().hex[:10]
+
+    # 1) Parse attachments ONCE
+    attachment_findings = analyze_attachments(settings, payload.all_attachment_urls())
+    extracted_text = _join_attachment_text(payload, attachment_findings)
+
+    # 2) Pricing web search + pricing prompt
+    pricing_prompt_template = load_prompt_file(settings.prompt_pricing_file)
+    q_pricing = (
+        f"Wholesale unit pricing India for RFQ: {payload.title} | {payload.standard} | "
+        f"{_compact_product_text(payload)}"
+    )
+    web_pricing: List[WebFinding] = PerplexitySearchClient(settings).search(q_pricing)
+
+    pricing_user_prompt = _build_user_prompt(pricing_prompt_template, payload, extracted_text)
+    if web_pricing:
+        pricing_user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join(
+            [f"- {w.title} {w.url}\n{w.snippet}" for w in web_pricing]
+        )
+
+    pricing_model_text = generate_text(
+        settings,
+        system_prompt="You must follow the user instructions exactly.",
+        user_prompt=pricing_user_prompt,
+    )
+    out1, out2 = _parse_two_outputs(pricing_model_text)
+
+    # 3) Summary web search + summary prompt
+    summary_prompt_template = load_prompt_file(settings.prompt_summary_file)
+    q_summary = (
+        f"India supplier clusters and cost proxy guidance for RFQ: {payload.title} | {payload.standard} | "
+        f"{_compact_product_text(payload)}"
+    )
+    web_summary: List[WebFinding] = PerplexitySearchClient(settings).search(q_summary)
+
+    summary_user_prompt = _build_user_prompt(summary_prompt_template, payload, extracted_text)
+    if web_summary:
+        summary_user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join(
+            [f"- {w.title} {w.url}\n{w.snippet}" for w in web_summary]
+        )
+
+    summary_model_text = generate_text(
+        settings,
+        system_prompt="You must follow the user instructions exactly.",
+        user_prompt=summary_user_prompt,
+    )
+    summary_out = _parse_single_output(summary_model_text)
+
+    # 4) Build combined output
+    first = payload.product
+    products = getattr(payload, "products", None) or []
+
+    # merge web findings (writer logs one list; we keep both sets)
+    merged_web = []
+    for w in web_pricing:
+        merged_web.append(WebFinding(title=f"[pricing] {w.title}", url=w.url, snippet=w.snippet))
+    for w in web_summary:
+        merged_web.append(WebFinding(title=f"[summary] {w.title}", url=w.url, snippet=w.snippet))
+
+    combined_raw = (
+        "=== PRICING_MODEL_OUTPUT ===\n"
+        + (pricing_model_text or "")
+        + "\n\n=== SUMMARY_MODEL_OUTPUT ===\n"
+        + (summary_model_text or "")
+    )
+
+    return OutputPayload(
+        run_id=run_id,
+        mode="all",
+        row_id=payload.row_id,
+        rfq_title=payload.title,
+        customer_name=payload.customer_name,
+        standard=payload.standard,
+        geography=payload.geography,
+        industry=payload.industry,
+        product_name=(first.name if first else (f"{len(products)} item(s)" if products else "")),
+        product_qty=(first.qty if first else ""),
+        product_details=(first.details if first else ""),
+        attachment_findings=attachment_findings,
+        web_findings=merged_web,
+        pricing_estimate_text=out1,
+        pricing_reasoning_text=out2,
+        rfq_summary_text=summary_out,
+        raw_model_output=combined_raw,
+        structured={"products_count": (len(products) if products else (1 if first else 0))},
+    )

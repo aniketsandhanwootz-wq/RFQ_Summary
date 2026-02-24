@@ -10,11 +10,11 @@ from pydantic import ValidationError
 
 from .config import load_settings, Settings
 from .schema import InputPayload
-from .task import run_pricing, run_summary
+from .task import run_pricing, run_summary, run_all
 from .writer import write_all
 from .gsheet_logger import log_job_event
 
-Mode = Literal["pricing", "summary"]
+Mode = Literal["pricing", "summary", "all"]
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class Job:
     row_id: str
 
 
-app = FastAPI(title="RFQ Summary Service", version="0.1.0")
+app = FastAPI(title="RFQ Summary Service", version="0.2.0")
 
 
 @app.get("/health")
@@ -35,7 +35,11 @@ def health():
 
 @app.get("/")
 def root():
-    return {"ok": True, "service": "rfq-summary", "endpoints": ["/rfq/pricing", "/rfq/summary", "/health"]}
+    return {
+        "ok": True,
+        "service": "rfq-summary",
+        "endpoints": ["/rfq/run", "/rfq/pricing", "/rfq/summary", "/health"],
+    }
 
 
 @app.head("/")
@@ -122,8 +126,11 @@ async def _run_job(job: Job) -> None:
         async def _do_work():
             if job.mode == "pricing":
                 out = await asyncio.to_thread(run_pricing, settings, obj, job.run_id)
-            else:
+            elif job.mode == "summary":
                 out = await asyncio.to_thread(run_summary, settings, obj, job.run_id)
+            else:
+                # all = pricing + summary in one job (attachments parsed once)
+                out = await asyncio.to_thread(run_all, settings, obj, job.run_id)
 
             await asyncio.to_thread(write_all, settings, obj, out)
 
@@ -176,13 +183,11 @@ async def _dispatcher_loop() -> None:
             finally:
                 sem.release()
 
-        # fire-and-forget, but safe
         asyncio.create_task(_wrapped())
 
 
 @app.on_event("startup")
 async def _startup():
-    # start dispatcher exactly once
     if getattr(app.state, "dispatcher_started", False):
         return
     app.state.dispatcher_started = True
@@ -197,7 +202,6 @@ async def _enqueue_or_reject(mode: Mode, data: dict, obj: InputPayload) -> Dict[
     row_id = (obj.row_id or "").strip()
 
     if _queue_size() >= max_q:
-        # Log reject WITHOUT huge payload
         try:
             log_job_event(
                 settings,
@@ -248,6 +252,25 @@ async def _enqueue_or_reject(mode: Mode, data: dict, obj: InputPayload) -> Dict[
 # -----------------------
 # Endpoints
 # -----------------------
+@app.post("/rfq/run")
+async def rfq_run(payload: dict, response: Response):
+    """
+    Single-button endpoint:
+      - one job
+      - attachments parsed once
+      - pricing + summary executed (web search remains double)
+      - writes all 3 columns
+    """
+    settings = load_settings()
+    data = _unwrap_payload(payload)
+    obj = _validate(data)
+    _require_row_id_if_writeback(settings, obj)
+
+    ack = await _enqueue_or_reject("all", data, obj)
+    response.status_code = 202
+    return ack
+
+
 @app.post("/rfq/pricing")
 async def rfq_pricing(payload: dict, response: Response):
     settings = load_settings()
