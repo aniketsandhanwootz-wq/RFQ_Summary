@@ -20,8 +20,16 @@ def _print_terminal(out: OutputPayload) -> None:
         print("\n=== OUTPUT 2 (Reasoning) ===\n")
         print(out.pricing_reasoning_text or "")
     elif out.mode == "summary":
-        print("=== OUTPUT (RFQ Summary) ===\n")
-        print(out.rfq_summary_text or "")
+        print("=== SUMMARY ===\n")
+        print(out.summary_text or "")
+        print("\n=== SCOPE ===\n")
+        print(out.scope_text or "")
+        print("\n=== COST ===\n")
+        print(out.cost_text or "")
+        print("\n=== QUALITY ===\n")
+        print(out.quality_text or "")
+        print("\n=== TIMELINE ===\n")
+        print(out.timeline_text or "")
     elif out.mode == "all":
         print("=== OUTPUT 1 (Pricing Estimate) ===\n")
         print(out.pricing_estimate_text or "")
@@ -46,17 +54,27 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
     colvals: Dict[str, str] = {}
 
     if out.mode == "pricing":
-        colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
-        colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
+        # OUTPUT 1 -> pricingEstimate
+        colvals[settings.glide_col_pricing_estimate] = out.pricing_estimate_text or ""
+        # OUTPUT 2 -> pricingEstimateSummary
+        colvals[settings.glide_col_pricing_estimate_summary] = out.pricing_reasoning_text or ""
 
     elif out.mode == "summary":
-        colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
+        # Summary prompt is now split into 4 cards
+        colvals[settings.glide_col_scope] = out.scope_text or ""
+        colvals[settings.glide_col_cost] = out.cost_text or ""
+        colvals[settings.glide_col_quality] = out.quality_text or ""
+        colvals[settings.glide_col_schedule] = out.timeline_text or ""
 
     elif out.mode == "all":
-        # write all 3 columns in one shot
-        colvals[settings.glide_col_price_estimate] = out.pricing_estimate_text or ""
-        colvals[settings.glide_col_price_reasoning] = out.pricing_reasoning_text or ""
-        colvals[settings.glide_col_rfq_summary] = out.rfq_summary_text or ""
+        # If you ever use /rfq/run, it writes both sets in one shot
+        colvals[settings.glide_col_pricing_estimate] = out.pricing_estimate_text or ""
+        colvals[settings.glide_col_pricing_estimate_summary] = out.pricing_reasoning_text or ""
+
+        colvals[settings.glide_col_scope] = out.scope_text or ""
+        colvals[settings.glide_col_cost] = out.cost_text or ""
+        colvals[settings.glide_col_quality] = out.quality_text or ""
+        colvals[settings.glide_col_schedule] = out.timeline_text or ""
 
     else:
         raise RuntimeError(f"Unknown mode: {out.mode}")
@@ -94,7 +112,11 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
         "extracted_attachment_text": extracted_text,
         "pricing_estimate_text": out.pricing_estimate_text or "",
         "pricing_reasoning_text": out.pricing_reasoning_text or "",
-        "rfq_summary_text": out.rfq_summary_text or "",
+        "summary_text": out.summary_text or "",
+        "scope_text": out.scope_text or "",
+        "cost_text": out.cost_text or "",
+        "quality_text": out.quality_text or "",
+        "timeline_text": out.timeline_text or "",
         "raw_model_output": out.raw_model_output or "",
         "web_findings": web_text,
         "glide_column_values": json.dumps(colvals, ensure_ascii=False),

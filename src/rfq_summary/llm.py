@@ -35,7 +35,7 @@ def generate_text(settings: Settings, system_prompt: str, user_prompt: str) -> s
                 model=model,
                 anthropic_api_key=settings.anthropic_api_key,
                 temperature=0.2,
-                max_tokens=2700,
+                max_tokens=8000,
             )
             resp = llm.invoke(
                 [

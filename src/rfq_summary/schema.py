@@ -214,7 +214,12 @@ class OutputPayload(BaseModel):
 
     pricing_estimate_text: str = ""
     pricing_reasoning_text: str = ""
-    rfq_summary_text: str = ""
+
+    summary_text: str = ""
+    scope_text: str = ""
+    cost_text: str = ""
+    quality_text: str = ""
+    timeline_text: str = ""
 
     raw_model_output: str = ""
     structured: Dict[str, Any] = Field(default_factory=dict)

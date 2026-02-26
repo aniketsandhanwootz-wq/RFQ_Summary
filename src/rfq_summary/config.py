@@ -16,7 +16,7 @@ class Settings(BaseSettings):
         default="claude-3-5-sonnet-latest,claude-3-5-haiku-latest",
         alias="ANTHROPIC_MODEL_FALLBACKS",
     )
-
+    anthropic_max_tokens: int = Field(default=8000, alias="ANTHROPIC_MAX_TOKENS")
     # Prompts (two endpoints)
     prompt_pricing_file: str = Field(default="prompts/pricing_estimate.md", alias="PROMPT_PRICING_FILE")
     prompt_summary_file: str = Field(default="prompts/rfq_summary.md", alias="PROMPT_SUMMARY_FILE")
@@ -60,9 +60,15 @@ class Settings(BaseSettings):
     glide_api_key: str = Field(default="", alias="GLIDE_API_KEY")
     glide_app_id: str = Field(default="", alias="GLIDE_APP_ID")
     glide_rfq_table: str = Field(default="", alias="GLIDE_RFQ_TABLE")
-    glide_col_rfq_summary: str = Field(default="dWgLs", alias="GLIDE_COL_RFQ_SUMMARY")
-    glide_col_price_estimate: str = Field(default="PRfRY", alias="GLIDE_COL_PRICE_ESTIMATE")
-    glide_col_price_reasoning: str = Field(default="jblXm", alias="GLIDE_COL_PRICE_REASONING")
+    # Summary cards (new XML prompt outputs)
+    glide_col_scope: str = Field(default="Name", alias="GLIDE_COL_SCOPE")
+    glide_col_cost: str = Field(default="vnlEl", alias="GLIDE_COL_COST")
+    glide_col_quality: str = Field(default="LwfgB", alias="GLIDE_COL_QUALITY")
+    glide_col_schedule: str = Field(default="FWPuu", alias="GLIDE_COL_SCHEDULE")  # timeline -> schedule column
+
+    # Pricing prompt outputs
+    glide_col_pricing_estimate: str = Field(default="dwtEW", alias="GLIDE_COL_PRICING_ESTIMATE")  # OUTPUT 1
+    glide_col_pricing_estimate_summary: str = Field(default="qcX9Z", alias="GLIDE_COL_PRICING_ESTIMATE_SUMMARY")  # OUTPUT 2
 
     # ========================
     # Google Sheet logging (optional)

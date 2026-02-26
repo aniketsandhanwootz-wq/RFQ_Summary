@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Tuple, List, Optional
-
+import re
+from typing import Dict
 from .config import Settings
 from .schema import InputPayload, OutputPayload, WebFinding
 from .attachments import analyze_attachments
@@ -114,6 +115,30 @@ def _parse_single_output(model_text: str) -> str:
         return t[idx:].strip()
     return t
 
+def _parse_xml_sections(model_text: str) -> Dict[str, str]:
+    """
+    Extract required XML blocks:
+      <summary>, <scope>, <cost>, <quality>, <timeline>
+
+    Returns dict with keys: summary, scope, cost, quality, timeline
+    Missing tags return "".
+    """
+    t = (model_text or "").strip()
+    if not t:
+        return {"summary": "", "scope": "", "cost": "", "quality": "", "timeline": ""}
+
+    def grab(tag: str) -> str:
+        # non-greedy capture between tags, allow multiline
+        m = re.search(rf"<{tag}>\s*(.*?)\s*</{tag}>", t, flags=re.IGNORECASE | re.DOTALL)
+        return (m.group(1).strip() if m else "")
+
+    return {
+        "summary": grab("summary"),
+        "scope": grab("scope"),
+        "cost": grab("cost"),
+        "quality": grab("quality"),
+        "timeline": grab("timeline"),
+    }
 
 def _products_for_prompt(payload: InputPayload) -> List[dict]:
     out: List[dict] = []
@@ -158,11 +183,18 @@ def _build_user_prompt(prompt_template: str, payload: InputPayload, extracted_te
         "Products": _products_for_prompt(payload),   # structured multi-product
         "rowID": payload.row_id,
     }
-    return (
-        prompt_template
-        .replace("{{insert_main_rfq_json_here}}", json.dumps(rfq_json, ensure_ascii=False))
-        .replace("{{insert_extracted_text_from_power_automate_here}}", extracted_text or "")
-    )
+
+    s = prompt_template
+
+    # New placeholders (preferred)
+    s = s.replace("{{rfq_json}}", json.dumps(rfq_json, ensure_ascii=False))
+    s = s.replace("{{extracted_attachment_text}}", extracted_text or "")
+
+    # Backward-compatible placeholders (older prompts)
+    s = s.replace("{{insert_main_rfq_json_here}}", json.dumps(rfq_json, ensure_ascii=False))
+    s = s.replace("{{insert_extracted_text_from_power_automate_here}}", extracted_text or "")
+
+    return s
 
 
 def _compact_product_text(payload: InputPayload) -> str:
@@ -267,7 +299,7 @@ def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str]
         user_prompt=user_prompt,
     )
 
-    summary_out = _parse_single_output(model_text)
+    sections = _parse_xml_sections(model_text)
 
     first = payload.product
     products = getattr(payload, "products", None) or []
@@ -287,9 +319,16 @@ def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str]
         web_findings=web_findings,
         pricing_estimate_text="",
         pricing_reasoning_text="",
-        rfq_summary_text=summary_out,
+        summary_text=sections.get("summary", ""),
+        scope_text=sections.get("scope", ""),
+        cost_text=sections.get("cost", ""),
+        quality_text=sections.get("quality", ""),
+        timeline_text=sections.get("timeline", ""),
         raw_model_output=model_text,
-        structured={"products_count": (len(products) if products else (1 if first else 0))},
+        structured={
+            "products_count": (len(products) if products else (1 if first else 0)),
+            "xml_ok": bool(sections.get("scope") or sections.get("cost") or sections.get("quality") or sections.get("timeline")),
+        }
     )
 
 def run_all(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
