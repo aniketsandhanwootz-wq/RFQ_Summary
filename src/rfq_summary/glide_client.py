@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+from typing import Any, Dict, Optional
 from .config import Settings
 
 
@@ -28,4 +29,140 @@ def glide_set_columns(settings: Settings, row_id: str, column_values: dict) -> N
 
     with httpx.Client(timeout=60) as client:
         r = client.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+
+def _glide_headers(settings: Settings) -> Dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.glide_api_key}",
+    }
+
+
+def _glide_query_rowid_by_rfq_id(settings: Settings, rfq_id: str) -> Optional[str]:
+    """
+    Uses Glide Advanced API (queryTables) with SQL to find the ZAI Responses row where:
+      <rfqIdColumn> = rfq_id
+    Returns the Row ID of the matching row, or None.
+    """
+    if not settings.glide_api_key or not settings.glide_app_id:
+        raise RuntimeError("Missing GLIDE_API_KEY/GLIDE_APP_ID.")
+
+    if not settings.glide_zai_responses_table:
+        raise RuntimeError("Missing GLIDE_ZAI_RESPONSES_TABLE (target table for writeback).")
+
+    col = (settings.glide_col_rfq_id or "").strip()
+    if not col:
+        raise RuntimeError("Missing GLIDE_COL_RFQ_ID (rfqId column id in ZAI Responses table).")
+
+    # Glide docs: queryTables supports SQL with params.  [oai_citation:1‡Glide](https://www.glideapps.com/docs/using-glide-tables-api)
+    sql = f'SELECT * FROM "{settings.glide_zai_responses_table}" WHERE "{col}" = $1 LIMIT 1'
+    payload = {
+        "appID": settings.glide_app_id,
+        "queries": [{"sql": sql, "params": [rfq_id]}],
+    }
+
+    url = "https://api.glideapp.io/api/function/queryTables"
+    with httpx.Client(timeout=60) as client:
+        r = client.post(url, headers=_glide_headers(settings), json=payload)
+        r.raise_for_status()
+        data = r.json()
+
+    # Response is an array with one element per query: { rows: [...], next: ... }  [oai_citation:2‡Glide](https://www.glideapps.com/docs/using-glide-tables-api)
+    try:
+        rows = (data or [])[0].get("rows") or []
+    except Exception:
+        rows = []
+
+    if not rows:
+        return None
+
+    row0 = rows[0] if isinstance(rows[0], dict) else {}
+    # Row ID key is typically "Row ID" for native tables, but handle variants defensively.
+    for k in ("Row ID", "rowID", "row_id"):
+        v = row0.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    return None
+
+
+def _glide_add_row_with_rfq_id(settings: Settings, rfq_id: str) -> str:
+    """
+    Adds a row to ZAI Responses table, setting rfqId column to rfq_id.
+    Returns the created Row ID (if available), else raises.
+    """
+    if not settings.glide_api_key or not settings.glide_app_id:
+        raise RuntimeError("Missing GLIDE_API_KEY/GLIDE_APP_ID.")
+
+    if not settings.glide_zai_responses_table:
+        raise RuntimeError("Missing GLIDE_ZAI_RESPONSES_TABLE.")
+
+    col = (settings.glide_col_rfq_id or "").strip()
+    if not col:
+        raise RuntimeError("Missing GLIDE_COL_RFQ_ID.")
+
+    url = "https://api.glideapp.io/api/function/mutateTables"
+    payload = {
+        "appID": settings.glide_app_id,
+        "mutations": [
+            {
+                "kind": "add-row-to-table",
+                "tableName": settings.glide_zai_responses_table,
+                "columnValues": {col: rfq_id},
+            }
+        ],
+    }
+
+    with httpx.Client(timeout=60) as client:
+        r = client.post(url, headers=_glide_headers(settings), json=payload)
+        r.raise_for_status()
+        data = r.json()
+
+    # Per docs, result can include "Row ID" of added row.  [oai_citation:3‡Glide](https://www.glideapps.com/docs/using-glide-tables-api)
+    try:
+        result0 = (data or [])[0] if isinstance(data, list) else data
+    except Exception:
+        result0 = {}
+
+    for k in ("Row ID", "rowID", "row_id"):
+        v = (result0 or {}).get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    raise RuntimeError("Glide add-row-to-table succeeded but Row ID not returned.")
+
+
+def glide_upsert_zai_response_by_rfq_id(settings: Settings, rfq_id: str, column_values: Dict[str, Any]) -> None:
+    """
+    Upsert behavior:
+      1) queryTables to find ZAI Responses row where rfqId == rfq_id
+      2) if found -> set-columns-in-row on that row
+      3) if not found -> add-row-to-table with rfqId set -> set-columns-in-row
+    """
+    if not rfq_id.strip():
+        raise RuntimeError("rfq_id is empty; cannot upsert into ZAI Responses table.")
+
+    # Find existing ZAI Responses rowID
+    row_id = _glide_query_rowid_by_rfq_id(settings, rfq_id.strip())
+
+    # If missing, create new row with rfqId populated
+    if not row_id:
+        row_id = _glide_add_row_with_rfq_id(settings, rfq_id.strip())
+
+    # Now write columns into ZAI Responses row
+    url = "https://api.glideapp.io/api/function/mutateTables"
+    payload = {
+        "appID": settings.glide_app_id,
+        "mutations": [
+            {
+                "kind": "set-columns-in-row",
+                "tableName": settings.glide_zai_responses_table,
+                "rowID": row_id,
+                "columnValues": column_values,
+            }
+        ],
+    }
+
+    with httpx.Client(timeout=60) as client:
+        r = client.post(url, headers=_glide_headers(settings), json=payload)
         r.raise_for_status()

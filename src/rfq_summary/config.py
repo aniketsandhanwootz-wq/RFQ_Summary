@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     glide_api_key: str = Field(default="", alias="GLIDE_API_KEY")
     glide_app_id: str = Field(default="", alias="GLIDE_APP_ID")
     glide_rfq_table: str = Field(default="", alias="GLIDE_RFQ_TABLE")
+
+    # Target writeback table (ZAI Responses)
+    glide_zai_responses_table: str = Field(default="", alias="GLIDE_ZAI_RESPONSES_TABLE")
+
+    # Column in ZAI Responses table that stores the RFQ rowID from "ALL RFQ" table
+    # (your rfqId column: usIzP)
+    glide_col_rfq_id: str = Field(default="usIzP", alias="GLIDE_COL_RFQ_ID")
     # Summary cards (new XML prompt outputs)
     glide_col_scope: str = Field(default="Name", alias="GLIDE_COL_SCOPE")
     glide_col_cost: str = Field(default="vnlEl", alias="GLIDE_COL_COST")
