@@ -5,7 +5,7 @@ from typing import Dict
 
 from .config import Settings
 from .schema import InputPayload, OutputPayload
-from .glide_client import glide_set_columns
+from .glide_client import glide_upsert_zai_response_by_rfq_id
 from .gsheet_logger import append_rows, build_chunked_log_rows
 
 
@@ -83,7 +83,10 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
     if settings.enable_glide_writeback:
         if not out.row_id.strip():
             raise RuntimeError("row_id missing but ENABLE_GLIDE_WRITEBACK=true")
-        glide_set_columns(settings, out.row_id, colvals)
+
+        # out.row_id is the RowID of the RFQ in "ALL RFQ" table.
+        # We store that into ZAI Responses.rfqId (usIzP) and upsert outputs into that row.
+        glide_upsert_zai_response_by_rfq_id(settings, out.row_id, colvals)
     else:
         _print_terminal(out)
 
