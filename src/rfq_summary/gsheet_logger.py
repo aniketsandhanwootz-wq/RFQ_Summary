@@ -22,7 +22,8 @@ def _chunks(s: str, size: int) -> List[str]:
 
 def _now_iso() -> str:
     ist = timezone(timedelta(hours=5, minutes=30))
-    return datetime.now(ist).isoformat()
+    # Format: DD MM YYYY, HH:MM:SS (IST)
+    return datetime.now(ist).strftime("%d %m %Y, %H:%M:%S")
 
 
 def _sheet_service(settings: Settings):
