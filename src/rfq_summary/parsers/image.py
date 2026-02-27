@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import imghdr
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -10,7 +9,27 @@ from ..config import Settings
 from ..schema import AttachmentFinding
 
 
+def _guess_image_mime(data: bytes) -> str:
+    """
+    Minimal MIME sniffing without imghdr (removed in Py3.13).
+    """
+    b = data[:16] if data else b""
 
+    # PNG
+    if b.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    # JPEG
+    if b.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    # WEBP (RIFF....WEBP)
+    if len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "image/webp"
+    # GIF
+    if b.startswith(b"GIF87a") or b.startswith(b"GIF89a"):
+        return "image/gif"
+
+    # Safe default
+    return "image/png"
 
 def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) -> str:
     if not getattr(settings, "enable_claude_vision_fallback", False):
@@ -27,15 +46,9 @@ def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) 
         max_tokens=1200,
     )
 
-    mime = "image/png"
-    kind = imghdr.what(None, h=img_bytes) or ""
-    if kind in ("jpg", "jpeg"):
-        mime = "image/jpeg"
-    elif kind == "webp":
-        mime = "image/webp"
 
     b64 = base64.b64encode(img_bytes).decode("utf-8")
-
+    mime = _guess_image_mime(img_bytes)
     msg = HumanMessage(
         content=[
             {"type": "text", "text": instruction},
