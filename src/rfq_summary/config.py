@@ -41,6 +41,19 @@ class Settings(BaseSettings):
     # Claude Vision fallback (for low OCR / scanned pages)
     enable_claude_vision_fallback: bool = Field(default=True, alias="ENABLE_CLAUDE_VISION_FALLBACK")
 
+    # ========================
+    # Google Document AI (OCR processor)
+    # ========================
+    enable_docai_ocr: bool = Field(default=True, alias="ENABLE_DOCAI_OCR")
+
+    docai_project_id: str = Field(default="", alias="DOCAI_PROJECT_ID")
+    docai_location: str = Field(default="asia-south1", alias="DOCAI_LOCATION")  # e.g. "asia-south1"
+    docai_processor_id: str = Field(default="", alias="DOCAI_PROCESSOR_ID")
+
+    # If empty, we fall back to GOOGLE_SA_JSON_B64.
+    docai_sa_json_b64: str = Field(default="", alias="DOCAI_SA_JSON_B64")
+
+    docai_timeout_sec: int = Field(default=120, alias="DOCAI_TIMEOUT_SEC")
     max_excel_rows: int = Field(default=250, alias="MAX_EXCEL_ROWS")
     max_excel_cols: int = Field(default=40, alias="MAX_EXCEL_COLS")
     max_excel_tables_per_sheet: int = Field(default=5, alias="MAX_EXCEL_TABLES_PER_SHEET")

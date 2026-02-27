@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict
 
 from google.oauth2.service_account import Credentials
@@ -21,7 +21,8 @@ def _chunks(s: str, size: int) -> List[str]:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist).isoformat()
 
 
 def _sheet_service(settings: Settings):

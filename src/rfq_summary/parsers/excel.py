@@ -130,7 +130,7 @@ def _rows_to_tsv(rows: List[List[str]], max_chars: int) -> str:
 def analyze_excel_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFinding:
     # load values + formulas
     wb_vals = load_workbook(filename=BytesIO(data), data_only=True)
-    wb_form = load_workbook(filename=BytesIO(data), data_only=False)
+    wb_form = load_workbook(filename=BytesIO(data), data_only=False, read_only=True)
 
     sheet_summaries: List[Dict[str, Any]] = []
     embedded_images: List[Dict[str, Any]] = []
@@ -241,7 +241,14 @@ def analyze_excel_bytes(settings: Settings, url: str, data: bytes) -> Attachment
         lines.append(f"Extracted sheet text included for LLM (bounded to {MAX_EXCEL_TEXT_CHARS} chars).")
 
     extracted_text = "\n\n".join(extracted_blocks).strip()
-
+    try:
+        wb_vals.close()
+    except Exception:
+        pass
+    try:
+        wb_form.close()
+    except Exception:
+        pass
     return AttachmentFinding(
         url=url,
         kind="excel",
