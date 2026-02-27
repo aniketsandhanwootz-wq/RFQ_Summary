@@ -105,3 +105,35 @@ def log_job_event(
         fields={"job_event": event_text},
     )
     append_rows(settings, rows)
+
+def log_progress_event(
+    settings: Settings,
+    run_id: str,
+    mode: str,
+    row_id: str,
+    event: str,
+    message: str = "",
+    extra: Dict[str, str] | None = None,
+) -> None:
+    """
+    Lightweight multi-line progress logs.
+    Writes field_name='event' (and optional extra fields).
+    """
+    if not settings.enable_sheets_logging:
+        return
+
+    base = f"EVENT={event}\n{message or ''}".strip()
+    fields: Dict[str, str] = {"event": base}
+
+    if extra:
+        for k, v in extra.items():
+            fields[f"event_{k}"] = str(v)
+
+    rows = build_chunked_log_rows(
+        settings=settings,
+        run_id=run_id,
+        mode=mode,
+        row_id=row_id or "",
+        fields=fields,
+    )
+    append_rows(settings, rows)

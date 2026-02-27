@@ -222,4 +222,7 @@ class OutputPayload(BaseModel):
     timeline_text: str = ""
 
     raw_model_output: str = ""
+    # ---- instrumentation ----
+    timings: Dict[str, Any] = Field(default_factory=dict)
+    docai: Dict[str, Any] = Field(default_factory=dict)
     structured: Dict[str, Any] = Field(default_factory=dict)

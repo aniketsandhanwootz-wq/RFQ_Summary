@@ -122,6 +122,8 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
         "timeline_text": out.timeline_text or "",
         "raw_model_output": out.raw_model_output or "",
         "web_findings": web_text,
+        "timings": json.dumps(out.timings or {}, ensure_ascii=False),
+        "docai": json.dumps(out.docai or {}, ensure_ascii=False),
         "glide_column_values": json.dumps(colvals, ensure_ascii=False),
         "writeback_enabled": str(bool(settings.enable_glide_writeback)),
     }

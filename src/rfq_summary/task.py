@@ -1,8 +1,8 @@
 from __future__ import annotations
-
+import time
 import json
 import uuid
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Any
 import re
 from typing import Dict
 from .config import Settings
@@ -225,12 +225,42 @@ def _compact_product_text(payload: InputPayload) -> str:
         return s
     return ""
 
+def _aggregate_docai_stats(attachment_findings) -> Dict[str, Any]:
+    used = False
+    pdf_files = 0
+    docai_pages = 0
+    failed_pdfs = 0
+
+    for a in attachment_findings or []:
+        if (a.kind or "") != "pdf":
+            continue
+        pdf_files += 1
+        d = (a.data or {}) if hasattr(a, "data") else {}
+        if bool(d.get("docai_used")):
+            used = True
+            try:
+                docai_pages += int(d.get("docai_pages") or 0)
+            except Exception:
+                pass
+        else:
+            # if docai not used and error present, count as failed for visibility
+            if (d.get("docai_error") or "").strip():
+                failed_pdfs += 1
+
+    return {
+        "used": used,
+        "pdf_files": pdf_files,
+        "pages": docai_pages,
+        "failed_pdfs": failed_pdfs,
+    }
 
 def run_pricing(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
     run_id = run_id or uuid.uuid4().hex[:10]
-
+    t0 = time.perf_counter()
+    t_attach0 = time.perf_counter()
     attachment_findings = analyze_attachments(settings, payload.all_attachment_urls())
     extracted_text = _join_attachment_text(payload, attachment_findings)
+    attachments_ms = int((time.perf_counter() - t_attach0) * 1000)
 
     prompt_template = load_prompt_file(settings.prompt_pricing_file)
 
@@ -238,21 +268,27 @@ def run_pricing(settings: Settings, payload: InputPayload, run_id: Optional[str]
         f"Wholesale unit pricing India for RFQ: {payload.title} | {payload.standard} | "
         f"{_compact_product_text(payload)}"
     )
+    t_web0 = time.perf_counter()
     web_findings: List[WebFinding] = PerplexitySearchClient(settings).search(q)
+    web_ms = int((time.perf_counter() - t_web0) * 1000)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
         user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join([f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings])
 
+    t_llm0 = time.perf_counter()
     model_text = generate_text(
         settings,
         system_prompt="You must follow the user instructions exactly.",
         user_prompt=user_prompt,
     )
+    llm_ms = int((time.perf_counter() - t_llm0) * 1000)
     out1, out2 = _parse_two_outputs(model_text)
 
     first = payload.product
     products = getattr(payload, "products", None) or []
+    total_ms = int((time.perf_counter() - t0) * 1000)
+    docai = _aggregate_docai_stats(attachment_findings)
     return OutputPayload(
         run_id=run_id,
         mode="pricing",
@@ -272,37 +308,51 @@ def run_pricing(settings: Settings, payload: InputPayload, run_id: Optional[str]
         rfq_summary_text="",
         raw_model_output=model_text,
         structured={"products_count": (len(products) if products else (1 if first else 0))},
+        timings={
+            "attachments_ms": attachments_ms,
+            "web_ms": web_ms,
+            "llm_ms": llm_ms,
+            "total_ms": total_ms,
+        },
+        docai=docai,
     )
 
 
 def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str] = None) -> OutputPayload:
     run_id = run_id or uuid.uuid4().hex[:10]
-
+    t0 = time.perf_counter()
+    t_attach0 = time.perf_counter()
     attachment_findings = analyze_attachments(settings, payload.all_attachment_urls())
     extracted_text = _join_attachment_text(payload, attachment_findings)
-
+    attachments_ms = int((time.perf_counter() - t_attach0) * 1000)
     prompt_template = load_prompt_file(settings.prompt_summary_file)
 
     q = (
         f"India supplier clusters and cost proxy guidance for RFQ: {payload.title} | {payload.standard} | "
         f"{_compact_product_text(payload)}"
     )
+    t_web0 = time.perf_counter()
     web_findings: List[WebFinding] = PerplexitySearchClient(settings).search(q)
+    web_ms = int((time.perf_counter() - t_web0) * 1000)
 
     user_prompt = _build_user_prompt(prompt_template, payload, extracted_text)
     if web_findings:
         user_prompt += "\n\n[WEB_FINDINGS]\n" + "\n".join([f"- {w.title} {w.url}\n{w.snippet}" for w in web_findings])
 
+    t_llm0 = time.perf_counter()
     model_text = generate_text(
         settings,
         system_prompt="You must follow the user instructions exactly.",
         user_prompt=user_prompt,
     )
+    llm_ms = int((time.perf_counter() - t_llm0) * 1000)
 
     sections = _parse_xml_sections(model_text)
 
     first = payload.product
     products = getattr(payload, "products", None) or []
+    total_ms = int((time.perf_counter() - t0) * 1000)
+    docai = _aggregate_docai_stats(attachment_findings)
     return OutputPayload(
         run_id=run_id,
         mode="summary",
@@ -325,6 +375,13 @@ def run_summary(settings: Settings, payload: InputPayload, run_id: Optional[str]
         quality_text=sections.get("quality", ""),
         timeline_text=sections.get("timeline", ""),
         raw_model_output=model_text,
+        timings={
+            "attachments_ms": attachments_ms,
+            "web_ms": web_ms,
+            "llm_ms": llm_ms,
+            "total_ms": total_ms,
+        },
+        docai=docai,
         structured={
             "products_count": (len(products) if products else (1 if first else 0)),
             "xml_ok": bool(sections.get("scope") or sections.get("cost") or sections.get("quality") or sections.get("timeline")),

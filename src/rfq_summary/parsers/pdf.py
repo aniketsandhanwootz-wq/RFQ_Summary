@@ -214,21 +214,23 @@ def analyze_pdf_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFi
 
         docai_used = False
         docai_error = ""
-
+        docai_pages_returned = 0
+        docai_pages_used = 0
         # If scanned-like, try DocAI OCR (retry once). No local OCR fallback.
         if scanned_like and _docai_enabled(settings):
             for attempt in (1, 2):
                 try:
                     docai_pages = _docai_ocr_pdf(settings, data)
                     if docai_pages:
+                        docai_pages_returned = len(docai_pages)
                         page_texts = docai_pages[:n_pages] if len(docai_pages) > 1 else docai_pages
+                        docai_pages_used = len(page_texts)
                         scanned_like = False
                         docai_used = True
                         break
                 except Exception as e:
                     docai_error = f"{type(e).__name__}: {e}"
                     docai_used = False
-
         # If still no text, move ahead but log in extracted text
         if scanned_like and not docai_used:
             note = "DocAI OCR failed (or not configured) for scanned PDF. No text extracted."
@@ -261,6 +263,12 @@ def analyze_pdf_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFi
             "mode": ("text+docai" if docai_used else "text"),
             "page_text_samples": page_text_samples,
             "extracted_text": extracted_text,
+
+            # ---- docai instrumentation ----
+            "docai_used": bool(docai_used),
+            "docai_pages_used": int(docai_pages_used if docai_used else 0),
+            "docai_pages_returned": int(docai_pages_returned if docai_used else 0),
+            "docai_error": (docai_error or ""),
         }
 
         return AttachmentFinding(

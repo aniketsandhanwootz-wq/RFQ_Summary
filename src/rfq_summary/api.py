@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Literal
-
+import time
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import ValidationError
 
@@ -12,7 +12,7 @@ from .config import load_settings, Settings
 from .schema import InputPayload
 from .task import run_pricing, run_summary, run_all
 from .writer import write_all
-from .gsheet_logger import log_job_event
+from .gsheet_logger import log_job_event, log_progress_event
 
 Mode = Literal["pricing", "summary", "all"]
 
@@ -21,8 +21,9 @@ Mode = Literal["pricing", "summary", "all"]
 class Job:
     run_id: str
     mode: Mode
-    payload: Dict[str, Any]  # already unwrapped
+    payload: Dict[str, Any]
     row_id: str
+    enqueued_at: float  # perf_counter timestamp
 
 
 app = FastAPI(title="RFQ Summary Service", version="0.2.0")
@@ -113,6 +114,21 @@ def _queue_size() -> int:
 async def _run_job(job: Job) -> None:
     settings = load_settings()
 
+    t_start = time.perf_counter()
+    queue_wait_ms = int((t_start - float(getattr(job, "enqueued_at", t_start))) * 1000)
+    print(f"[RUNNING] run_id={job.run_id} mode={job.mode} row_id={job.row_id} queue_wait_ms={queue_wait_ms}")
+    try:
+        log_progress_event(
+            settings,
+            job.run_id,
+            job.mode,
+            job.row_id,
+            event="RUNNING",
+            message=f"queue_wait_ms={queue_wait_ms}",
+        )
+    except Exception:
+        pass
+
     # RUNNING (best-effort)
     try:
         log_job_event(settings, job.run_id, job.mode, job.row_id, status="RUNNING", message="Job started")
@@ -136,9 +152,24 @@ async def _run_job(job: Job) -> None:
 
         await asyncio.wait_for(_do_work(), timeout=max(30, int(settings.job_timeout_sec)))
 
+        total_ms = int((time.perf_counter() - t_start) * 1000)
+        print(f"[DONE] run_id={job.run_id} mode={job.mode} row_id={job.row_id} total_ms={total_ms}")
+
+        try:
+            log_progress_event(
+                settings,
+                job.run_id,
+                job.mode,
+                job.row_id,
+                event="DONE",
+                message=f"total_ms={total_ms}",
+            )
+        except Exception:
+            pass
+
         # DONE (best-effort)
         try:
-            log_job_event(settings, job.run_id, job.mode, job.row_id, status="DONE", message="Job completed")
+            log_job_event(settings, job.run_id, job.mode, job.row_id, status="DONE", message=f"Job completed total_ms={total_ms}")
         except Exception:
             pass
 
@@ -152,6 +183,18 @@ async def _run_job(job: Job) -> None:
                 status="FAILED",
                 message=f"Job timeout after {settings.job_timeout_sec}s",
             )
+            try:
+                total_ms = int((time.perf_counter() - t_start) * 1000)
+                log_progress_event(
+                    settings,
+                    job.run_id,
+                    job.mode,
+                    job.row_id,
+                    event="FAILED_TIMEOUT",
+                    message=f"total_ms={total_ms} timeout_sec={settings.job_timeout_sec}",
+                )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -165,6 +208,18 @@ async def _run_job(job: Job) -> None:
                 status="FAILED",
                 message=f"{type(e).__name__}: {e}",
             )
+            try:
+                total_ms = int((time.perf_counter() - t_start) * 1000)
+                log_progress_event(
+                    settings,
+                    job.run_id,
+                    job.mode,
+                    job.row_id,
+                    event="FAILED",
+                    message=f"total_ms={total_ms} err={type(e).__name__}: {e}",
+                )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -200,7 +255,7 @@ async def _enqueue_or_reject(mode: Mode, data: dict, obj: InputPayload) -> Dict[
 
     run_id = uuid.uuid4().hex[:10]
     row_id = (obj.row_id or "").strip()
-
+    enq = time.perf_counter()
     if _queue_size() >= max_q:
         try:
             log_job_event(
@@ -225,9 +280,13 @@ async def _enqueue_or_reject(mode: Mode, data: dict, obj: InputPayload) -> Dict[
             },
         )
 
-    job = Job(run_id=run_id, mode=mode, payload=data, row_id=row_id)
+    job = Job(run_id=run_id, mode=mode, payload=data, row_id=row_id, enqueued_at=enq)
     await _get_queue().put(job)
-
+    print(f"[QUEUED] run_id={run_id} mode={mode} row_id={row_id} qsize={_queue_size()}/{max_q}")
+    try:
+        log_progress_event(settings, run_id, mode, row_id, event="QUEUED", message=f"qsize={_queue_size()}/{max_q}")
+    except Exception:
+        pass
     try:
         log_job_event(
             settings,
