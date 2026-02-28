@@ -60,17 +60,19 @@ def write_all(settings: Settings, inp: InputPayload, out: OutputPayload) -> None
         colvals[settings.glide_col_pricing_estimate_summary] = out.pricing_reasoning_text or ""
 
     elif out.mode == "summary":
-        # Summary prompt is now split into 4 cards
+        # Summary prompt is split into 5 cards (Summary + 4 detailed cards)
+        colvals[settings.glide_col_summary] = out.summary_text or ""
         colvals[settings.glide_col_scope] = out.scope_text or ""
         colvals[settings.glide_col_cost] = out.cost_text or ""
         colvals[settings.glide_col_quality] = out.quality_text or ""
         colvals[settings.glide_col_schedule] = out.timeline_text or ""
 
     elif out.mode == "all":
-        # If you ever use /rfq/run, it writes both sets in one shot
+        # /rfq/run writes both pricing outputs + all summary cards
         colvals[settings.glide_col_pricing_estimate] = out.pricing_estimate_text or ""
         colvals[settings.glide_col_pricing_estimate_summary] = out.pricing_reasoning_text or ""
 
+        colvals[settings.glide_col_summary] = out.summary_text or ""
         colvals[settings.glide_col_scope] = out.scope_text or ""
         colvals[settings.glide_col_cost] = out.cost_text or ""
         colvals[settings.glide_col_quality] = out.quality_text or ""

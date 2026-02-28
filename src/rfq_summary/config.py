@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     glide_col_cost: str = Field(default="vnlEl", alias="GLIDE_COL_COST")
     glide_col_quality: str = Field(default="LwfgB", alias="GLIDE_COL_QUALITY")
     glide_col_schedule: str = Field(default="FWPuu", alias="GLIDE_COL_SCHEDULE")  # timeline -> schedule column
+    glide_col_summary: str = Field(default="hK56D", alias="GLIDE_COL_SUMMARY")
 
     # Pricing prompt outputs
     glide_col_pricing_estimate: str = Field(default="dwtEW", alias="GLIDE_COL_PRICING_ESTIMATE")  # OUTPUT 1
