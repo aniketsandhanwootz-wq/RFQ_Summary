@@ -98,7 +98,7 @@ NDJSON = "\n".join(
             {
                 "type": "query",
                 "query_ref": "Q1",
-                "product_ref": 2,
+                "product_ref": [2],
                 "section": "specification",
                 "description": "DIN 125 offers 140 HV and 200 HV. We would suggest 140 HV against class 8.8 bolts — please confirm.",
                 "photo": [],
@@ -241,13 +241,13 @@ def test_validations() -> bool:
                     "provenance": {"specification": "verbatim + derived (cross-referenced)"},
                 }
             ),
-            json.dumps({"type": "query", "query_ref": "Q1", "product_ref": 1, "section": "scope",
+            json.dumps({"type": "query", "query_ref": "Q1", "product_ref": [1], "section": "scope",
                         "description": "Confirm the scope boundary."}),
-            json.dumps({"type": "query", "query_ref": "Q2", "product_ref": 1, "section": "scope",
+            json.dumps({"type": "query", "query_ref": "Q2", "product_ref": [1], "section": "scope",
                         "description": "confirm the scope boundary."}),
-            json.dumps({"type": "query", "query_ref": "Q3", "product_ref": 9, "section": "quantity",
+            json.dumps({"type": "query", "query_ref": "Q3", "product_ref": [9], "section": "quantity",
                         "description": "Is this annual? And what incoterm applies?"}),
-            json.dumps({"type": "query", "query_ref": "Q4", "product_ref": 1, "section": "pricing",
+            json.dumps({"type": "query", "query_ref": "Q4", "product_ref": [1], "section": "pricing",
                         "description": "What currency?"}),
             json.dumps({"type": "rfq_summary", "placeholder_count": 5, "query_count": 2}),
         ]
@@ -263,11 +263,141 @@ def test_validations() -> bool:
     ok &= _check("duplicate query flagged", "duplicate query text" in w, w)
     ok &= _check("two-questions-in-one flagged", "more than one question" in w, w)
     ok &= _check("unknown section flagged", "unknown section" in w, w)
-    ok &= _check("query pointing at a missing line flagged", "was not extracted" in w, w)
+    ok &= _check("query pointing at a missing line flagged", "not extracted" in w, w)
 
     # A response is the customer's to give; never accept one from the model.
     q = ExtractedQuery.model_validate({"description": "x?", "Query Response": "B1", "response": "B1"})
     ok &= _check("model-supplied response discarded", not hasattr(q, "response"))
+    return ok
+
+
+def test_banned_queries() -> bool:
+    """§1.2 — four kinds of question that must never reach a customer."""
+    banned = [
+        ("a file we could not open", "One of the attached files would not open at our end — could you resend the drawing?"),
+        ("an unreadable file", "The PDF appears corrupt — please share the file again."),
+        ("our own tracking", "Could you share your project reference number for our internal records?"),
+        ("the supplier model", "Which hardness class applies, so our supplier can quote correctly?"),
+        ("quantity basis", "Are these quantities annual usage or a one-time requirement?"),
+        ("quantity basis", "Is the 650,000 volume a one-time order or recurring?"),
+        ("a commercial term", "What currency and incoterm should we quote against?"),
+        ("a project name", "No project name was provided. Could you confirm the project or programme name?"),
+        ("a PPAP ask", "Is PPAP required on these parts, and if so at which level?"),
+        ("a fetch failure", "Two of the attached files failed to fetch — could you check and resend them?"),
+    ]
+    allowed = [
+        "MTL5102B has two sub-states: B1 (min 5 um, 480 h salt spray) and B2 (min 8 um, 720 h). Which applies?",
+        "DIN 125 offers 140 HV and 200 HV. We would suggest 140 HV against class 8.8 bolts — please confirm.",
+        "Is any of these parts used in a safety-critical assembly? It changes the inspection level we build in.",
+        "Drawing MT-4471 rev C is referenced but we have rev B. Which revision should we quote against?",
+        "The enquiry references ISO 4014 but it was not attached. Could you share a copy?",
+        # Real technical questions from the live run — these must survive the filter.
+        "The descriptor references VDA235-104 without the .20 suffix used elsewhere. We have treated it as "
+        "VDA 235-104.20. Please confirm, or clarify if a different VDA code applies.",
+        "What is the end application for these fasteners? Knowing the assembly helps us propose equivalents "
+        "where they would save cost, and set the right inspection level if any are safety-critical.",
+    ]
+
+    def warnings_for(text):
+        nd = "\n".join([
+            json.dumps({"type": "product", "index": 1, "name": "Hex Bolt M10", "details": "Specification:\nx\n\\--"}),
+            json.dumps({"type": "query", "query_ref": "Q1", "product_ref": [1],
+                        "section": "specification", "description": text}),
+        ])
+        return [w for w in parse_product_extraction(nd).validation_warnings if "query Q1" in w]
+
+    # A commercial section is itself the defect, whatever the wording.
+    nd = "\n".join([
+        json.dumps({"type": "product", "index": 1, "name": "Hex Bolt M10", "details": "Specification:\nx\n\\--"}),
+        json.dumps({"type": "query", "query_ref": "Q1", "product_ref": [1],
+                    "section": "commercial", "description": "What are the payment milestones?"}),
+    ])
+    ok = _check(
+        "flags a commercial section",
+        any("commercial query" in w for w in parse_product_extraction(nd).validation_warnings),
+    )
+    for label, text in banned:
+        ok &= _check(f"flags {label}", bool(warnings_for(text)), text[:60])
+    for text in allowed:
+        ok &= _check(f"allows {text[:44]!r}", not warnings_for(text), str(warnings_for(text)))
+    return ok
+
+
+def test_query_budget_and_merging() -> bool:
+    """§1.2 — four questions per RFQ, and one question covering several lines is one row."""
+    def build(queries):
+        objs = [{"type": "product", "index": i, "name": f"Part {i}",
+                 "details": "Specification:\nx\n\\--"} for i in (1, 2, 3, 4)]
+        return "\n".join(json.dumps(o) for o in objs + queries)
+
+    same_a = ("The descriptor references both MTL5102A and VDA 235-104.20. We have treated "
+              "VDA 235-104.20 as the VDA code for the same coating defined in MTL5102A. Please confirm.")
+    same_b = ("The descriptor references VDA235-104 without the .20 suffix. We have treated this "
+              "as the same VDA 235-104.20 / MTL5102A coating. Please confirm.")
+    other = "DIN 125 Part 1 offers two hardness classes: 140 HV and 200 HV. Should we quote 140 HV?"
+    third = "MTL5102B has two sub-states: B1 (min 5 um, 480 h) and B2 (min 8 um, 720 h). Which applies?"
+
+    # The same question split across two lines must be caught even though the wording differs.
+    r = parse_product_extraction(build([
+        {"type": "query", "query_ref": "Q1", "product_ref": 1, "section": "specification", "description": same_a},
+        {"type": "query", "query_ref": "Q8", "product_ref": 4, "section": "specification", "description": same_b},
+    ]))
+    ok = _check("reworded duplicate caught", any("ask the same thing" in w for w in r.validation_warnings),
+                str(r.validation_warnings))
+    ok &= _check("merge hint names both lines", any("[1, 4]" in w for w in r.validation_warnings))
+
+    # Genuinely different questions in the same section must not be merged.
+    r = parse_product_extraction(build([
+        {"type": "query", "query_ref": "Q3", "product_ref": 2, "section": "specification", "description": other},
+        {"type": "query", "query_ref": "Q5", "product_ref": 3, "section": "specification", "description": third},
+    ]))
+    ok &= _check("distinct questions left alone", not any("ask the same thing" in w for w in r.validation_warnings),
+                 str(r.validation_warnings))
+
+    # Five questions is over the cap.
+    five = [{"type": "query", "query_ref": f"Q{i}", "product_ref": [i % 4 + 1], "section": "standards",
+             "description": f"Drawing rev {i} conflicts with the enquiry. Which revision governs part {i}?"}
+            for i in range(5)]
+    r = parse_product_extraction(build(five))
+    ok &= _check("over-cap flagged", any("the cap is 4" in w for w in r.validation_warnings))
+
+    # Four is fine, and one row may carry several lines.
+    r = parse_product_extraction(build([
+        {"type": "query", "query_ref": "Q1", "product_ref": [1, 4], "section": "specification", "description": same_a},
+        {"type": "query", "query_ref": "Q3", "product_ref": [2], "section": "specification", "description": other},
+        {"type": "query", "query_ref": "Q5", "product_ref": [3], "section": "specification", "description": third},
+    ]))
+    ok &= _check("at-cap run is clean", not r.validation_warnings, str(r.validation_warnings))
+    ok &= _check("merged query covers both lines", r.queries[0].product_refs == [1, 4])
+    ok &= _check("queries_for finds a merged query", r.queries_for(4)[0].query_ref == "Q1")
+    return ok
+
+
+def test_truncation_names_the_lost_line() -> bool:
+    """A real 9-line RFQ truncated mid-way through the ninth product."""
+    objs = [{"type": "rfq_header", "project": "P", "line_count_expected": 9}]
+    objs += [{"type": "product", "index": i, "name": f"Line {i}", "details": "Specification:\nx"}
+             for i in range(1, 9)]
+    text = "\n".join(json.dumps(o) for o in objs)
+    text += ('\n{"type":"product","index":9,"source_ref":"M080726 / Supports",'
+             '"name":"Pipe Supports — Phase 2.5 BoP (family)","structure":"family",'
+             '"variant_count":42,"quantity"')
+
+    r = parse_product_extraction(text)
+    truncation = [e for e in r.parse_errors if "truncated" in e]
+
+    ok = _check("eight complete lines still parse", len(r.products) == 8, str(len(r.products)))
+    ok &= _check("truncation is reported", bool(truncation), str(r.parse_errors))
+    ok &= _check("the lost line is named", "line 9" in (truncation[0] if truncation else ""))
+    ok &= _check("its name is named", "Pipe Supports" in (truncation[0] if truncation else ""))
+    ok &= _check("count mismatch surfaces too",
+                 r.reconciliation_note() == "line_count_expected=9 but 8 product line(s) parsed")
+    # A half-specified row is worse than a missing one: nothing partial is emitted.
+    ok &= _check("no partial row emitted", all(p.index != 9 for p in r.products))
+
+    # Ordinary junk is not mistaken for truncation.
+    r2 = parse_product_extraction("I could not find any products in this email.")
+    ok &= _check("prose is not called truncation", not [e for e in r2.parse_errors if "truncated" in e])
     return ok
 
 
@@ -376,7 +506,7 @@ def test_query_rows_link_to_products() -> bool:
         # Query Photo is off by default; a photo the model volunteers is not written.
         stub.sent.clear()
         q = ExtractedQuery.model_validate(
-            {"description": "Which of these two revisions applies?", "product_ref": 1,
+            {"description": "Which of these two revisions applies?", "product_ref": [1],
              "photo": ["https://example.com/rev-a.png"]}
         )
         glide_add_query_rows(settings, "ALL_RFQ_ROW", [q], {1: "ROW_A"})
@@ -401,8 +531,11 @@ if __name__ == "__main__":
         [
             test_parse(),
             test_validations(),
+            test_banned_queries(),
+            test_query_budget_and_merging(),
             test_mismatch_is_reported(),
             test_garbage_is_not_fatal(),
+            test_truncation_names_the_lost_line(),
             test_glide_payload(),
             test_query_rows_link_to_products(),
         ]

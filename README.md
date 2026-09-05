@@ -24,7 +24,9 @@ steps because the second depends on the first:
    `Target price`, `Dwg link`, `Rep URL`, `Addl. files`, plus `srNo` and
    `acceptedProduct`. Glide returns a Row ID per row.
 2. Each open question becomes a row in the **Queries** table, carrying the Row ID
-   of the line it blocks in `Product id`. `Query Description` is written the way the
+   of every line it covers in `Product id`, comma-separated — one question that
+   applies to several lines is one row, not one per line. At most four queries go
+   to a customer for a whole RFQ. `Query Description` is written the way the
    team would ask the customer — one question per row, options stated where there
    are options, a reason only where it is a recommendation. An RFQ-level question (`product_ref:
    null`) is linked to the RFQ only. `Query ID` is database-assigned and
@@ -43,12 +45,23 @@ wait; giving up costs the product rows only.
 The prompt asks for several rules to be checked rather than trusted, because the
 model broke them in testing. `_validate()` in `product_extraction.py` reports them
 as `validation_warnings` — logged, and stored in the Sheets log — without ever
-blocking a write: product name over 50 characters or not a name at all, provenance
+blocking a write: a query that asks the customer about a file we could not open, asks
+for something for our own tracking, names a supplier or vendor, or asks for quantity
+basis and the rest of the assume list; product name over 50 characters or not a name at all, provenance
 given as a phrase instead of one token, bold sub-headings inside `RFQ Details`,
 `placeholder_count` or `query_count` disagreeing with what was emitted, a `\--`
 marker with no query row (or the reverse), duplicate query text, two questions in
 one query row, an unknown `section`, and a query pointing at a line that was never
 extracted.
+
+### Model
+
+All seven tasks share one model (`ANTHROPIC_MODEL`, default `claude-opus-5`), with
+`ANTHROPIC_MODEL_FALLBACKS` as the retry chain. `generate_text` sends no
+`temperature` — Opus 5, Opus 4.8/4.7 and Sonnet 5 reject it with a 400 — and uses
+adaptive thinking instead (`ANTHROPIC_ADAPTIVE_THINKING=false` turns it off). When a
+fallback answers, the model that replied is logged, so a quietly worse answer is not
+mistaken for a good one.
 
 ### Configuration
 

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, List
 
 from .config import Settings
 from .schema import InputPayload, OutputPayload, QueryPayload, TriageOutputPayload, RfqClassificationInputPayload, RfqClassificationOutputPayload, RfqRegenerateTriageInputPayload, RfqRegenerateTriageOutputPayload, RfqQueryInputPayload, RfqQueryOutputPayload
 from .glide_client import glide_upsert_zai_response_by_rfq_id, glide_update_all_rfq_triage_outputs, glide_update_prospect_rfq_classification, glide_add_zai_regenerate_row, glide_add_product_rows, glide_add_query_rows
 from .gsheet_logger import append_rows, build_chunked_log_rows
+from .product_extraction import MAX_QUERIES_PER_RFQ
 
 
 def _print_terminal(out: OutputPayload) -> None:
@@ -191,6 +192,11 @@ def _write_extracted_products(settings: Settings, rfq_row_id: str, out: TriageOu
     # Queries are written after the products so each one can carry its Product id.
     queries_written = 0
     if extraction.queries:
+        if len(extraction.queries) > MAX_QUERIES_PER_RFQ:
+            print(
+                f"[WARN] run_id={out.run_id} | {len(extraction.queries)} queries for this RFQ; "
+                f"the cap is {MAX_QUERIES_PER_RFQ} — all are written, but the customer sees them all"
+            )
         try:
             queries_written = glide_add_query_rows(settings, rfq_row_id, extraction.queries, resolved)
             print(f"[INFO] run_id={out.run_id} | wrote {queries_written} query row(s)")
@@ -221,6 +227,30 @@ def write_products(settings: Settings, inp: QueryPayload, out: TriageOutputPaylo
     return products_written
 
 
+def _variant_log_fields(products) -> Dict[str, str]:
+    """
+    Family variants are not written to Glide, so the sheet log is where they live.
+    Rendered as TSV rather than JSON — a reviewer reads these, and 100 rows of JSON
+    in one cell is unreadable.
+    """
+    lines: List[str] = []
+    total = 0
+    for product in products:
+        annexure = product.annexure
+        if not annexure or not annexure.rows:
+            continue
+        header = ["line", "product"] + [str(c) for c in (annexure.columns or [])]
+        lines.append("\t".join(header))
+        for row in annexure.rows:
+            cells = row if isinstance(row, list) else [row.get(c, "") for c in (annexure.columns or [])] if isinstance(row, dict) else [row]
+            lines.append("\t".join([str(product.index or ""), product.name] + [str(c) for c in cells]))
+            total += 1
+
+    if not total:
+        return {"variants_extracted": "0"}
+    return {"variants_extracted": str(total), "variants_tsv": "\n".join(lines)}
+
+
 def _product_log_fields(out: TriageOutputPayload, products_written: int, queries_written: int) -> Dict[str, str]:
     extraction = out.product_extraction
     if extraction is None:
@@ -249,6 +279,7 @@ def _product_log_fields(out: TriageOutputPayload, products_written: int, queries
         "products_header": json.dumps(header.model_dump(mode="json") if header else {}, ensure_ascii=False),
         "products_summary": json.dumps(summary.model_dump(mode="json") if summary else {}, ensure_ascii=False),
         "products_reconciliation": extraction.reconciliation_note(),
+        **_variant_log_fields(extraction.products),
         "products_validation_warnings": json.dumps(extraction.validation_warnings or [], ensure_ascii=False),
         "products_skipped": json.dumps(extraction.skipped_products or [], ensure_ascii=False),
         "products_parse_errors": json.dumps(extraction.parse_errors or [], ensure_ascii=False),
