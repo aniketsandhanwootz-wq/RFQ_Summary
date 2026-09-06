@@ -442,6 +442,23 @@ def test_query_budget_and_merging() -> bool:
     return ok
 
 
+def test_adaptive_thinking_gating() -> bool:
+    """Adaptive thinking goes only to models that accept it — the rest 400 on it."""
+    from rfq_summary.llm import _supports_adaptive_thinking as ok_for
+
+    accepts = ["claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+               "claude-sonnet-5", "claude-sonnet-4-6", "claude-fable-5-1"]
+    rejects = ["claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-3-haiku-20240307",
+               "claude-sonnet-4-5", "claude-3-5-sonnet-20241022", ""]
+
+    ok = True
+    for m in accepts:
+        ok &= _check(f"{m} gets adaptive thinking", ok_for(m))
+    for m in rejects:
+        ok &= _check(f"{m or '<empty>'} does not", not ok_for(m))
+    return ok
+
+
 def test_internal_notes_formatting() -> bool:
     """§5.4 / hard rule 12f — bold block labels, one blank line between topics."""
     def one(notes):
@@ -660,6 +677,7 @@ if __name__ == "__main__":
             test_query_typing(),
             test_query_budget_and_merging(),
             test_internal_notes_formatting(),
+            test_adaptive_thinking_gating(),
             test_mismatch_is_reported(),
             test_garbage_is_not_fatal(),
             test_truncation_names_the_lost_line(),
