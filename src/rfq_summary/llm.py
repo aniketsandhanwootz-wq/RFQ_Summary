@@ -28,6 +28,39 @@ def _supports_adaptive_thinking(model: str) -> bool:
     return bool(_ADAPTIVE_THINKING_MODELS.match((model or "").strip()))
 
 
+def response_text(content: object) -> str:
+    """
+    LangChain gives back a plain string only when the reply is a single text
+    block. With thinking enabled the reply is a LIST of blocks — the thinking
+    block first, the answer after — so calling .strip() on it raises
+    AttributeError and takes down an otherwise good response.
+
+    Pull out the text blocks and join them; ignore thinking, tool-use and any
+    other block type. Thinking is reasoning, not answer, and must never end up
+    in the text we parse as NDJSON.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: List[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                if block.get("type") == "text" and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+            else:
+                # Object-style blocks (SDK models) expose .type / .text.
+                if getattr(block, "type", None) == "text":
+                    text = getattr(block, "text", None)
+                    if isinstance(text, str):
+                        parts.append(text)
+        return "".join(parts).strip()
+    return str(content).strip()
+
+
 def _models(settings: Settings) -> List[str]:
     primary = (settings.anthropic_model or "").strip()
     fallbacks = [m.strip() for m in (settings.anthropic_model_fallbacks or "").split(",") if m.strip()]
@@ -74,10 +107,12 @@ def generate_text(
                     HumanMessage(content=user_prompt),
                 ]
             )
-            # A silent fallback is a quietly worse answer. Say which model replied.
+            text = response_text(resp.content)
+            # Only now is the answer actually in hand — announcing the fallback
+            # before this point claimed success for a call that then threw.
             if model != primary:
                 print(f"[WARN] llm | {primary} failed, answered by fallback {model}. Earlier: {'; '.join(failures)}")
-            return (resp.content or "").strip()
+            return text
         except Exception as e:
             last_err = e
             detail = f"{model}: {type(e).__name__}: {e}"

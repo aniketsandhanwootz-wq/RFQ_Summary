@@ -6,6 +6,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..config import Settings
+from ..llm import response_text
 from ..schema import AttachmentFinding
 
 
@@ -39,10 +40,11 @@ def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) 
     if not (getattr(settings, "anthropic_model", "") or "").strip():
         return ""
 
+    # No temperature: Opus 5, Opus 4.8/4.7 and Sonnet 5 reject it with a 400,
+    # and anthropic_model defaults to one of those.
     llm = ChatAnthropic(
         model=settings.anthropic_model,
         anthropic_api_key=settings.anthropic_api_key,
-        temperature=0.2,
         max_tokens=1200,
     )
 
@@ -60,7 +62,7 @@ def _claude_vision_text(settings: Settings, img_bytes: bytes, instruction: str) 
     )
 
     resp = llm.invoke([SystemMessage(content="You are a manufacturing RFQ analyst."), msg])
-    return (resp.content or "").strip()
+    return response_text(resp.content)
 
 def analyze_image_bytes(settings: Settings, url: str, data: bytes) -> AttachmentFinding:
     vision = ""

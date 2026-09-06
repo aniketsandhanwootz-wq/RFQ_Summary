@@ -442,6 +442,54 @@ def test_query_budget_and_merging() -> bool:
     return ok
 
 
+def test_response_text_handles_thinking_blocks() -> bool:
+    """With thinking on, LangChain returns a LIST of blocks, not a string.
+
+    Calling .strip() on that list raised AttributeError and killed every task
+    in production — the model had answered fine, we just could not read it.
+    """
+    from rfq_summary.llm import response_text as f
+
+    ndjson = '{"type":"product","index":1,"name":"Hex Bolt"}'
+    # The exact shape that crashed: thinking block first, answer after.
+    thinking_then_text = [
+        {"type": "thinking", "thinking": "Let me work through the line items...",
+         "signature": "sig"},
+        {"type": "text", "text": ndjson},
+    ]
+
+    class _Block:
+        def __init__(self, type_, text=None):
+            self.type, self.text = type_, text
+
+    cases = [
+        ("plain string still works", "hello  ", "hello"),
+        ("thinking + text", thinking_then_text, ndjson),
+        ("text-only list", [{"type": "text", "text": "abc"}], "abc"),
+        ("several text blocks join", [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}], "ab"),
+        ("thinking alone yields nothing", [{"type": "thinking", "thinking": "x"}], ""),
+        ("list of bare strings", ["a", "b"], "ab"),
+        ("None", None, ""),
+        ("empty list", [], ""),
+        ("tool_use ignored", [{"type": "tool_use", "name": "x"}, {"type": "text", "text": "ok"}], "ok"),
+        ("object-style blocks", [_Block("thinking"), _Block("text", "ok")], "ok"),
+        ("malformed block skipped", [{"type": "text"}, {"type": "text", "text": "ok"}], "ok"),
+    ]
+    ok = True
+    for label, given, want in cases:
+        got = f(given)
+        ok &= _check(label, got == want, f"got {got!r}, want {want!r}")
+
+    # Reasoning must never reach the NDJSON parser.
+    ok &= _check("thinking text never leaks into the answer",
+                 "work through" not in f(thinking_then_text))
+
+    # And the result is parseable, which is the whole point.
+    ok &= _check("the recovered text parses",
+                 len(parse_product_extraction(f(thinking_then_text)).products) == 1)
+    return ok
+
+
 def test_adaptive_thinking_gating() -> bool:
     """Adaptive thinking goes only to models that accept it — the rest 400 on it."""
     from rfq_summary.llm import _supports_adaptive_thinking as ok_for
@@ -678,6 +726,7 @@ if __name__ == "__main__":
             test_query_budget_and_merging(),
             test_internal_notes_formatting(),
             test_adaptive_thinking_gating(),
+            test_response_text_handles_thinking_blocks(),
             test_mismatch_is_reported(),
             test_garbage_is_not_fatal(),
             test_truncation_names_the_lost_line(),
