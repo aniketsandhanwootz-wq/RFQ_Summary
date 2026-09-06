@@ -802,6 +802,18 @@ def run_query_triage(settings: Settings, payload: QueryPayload, run_id: Optional
     #    here. Product extraction keeps running in the background so it never
     #    delays the ZAI response reaching Glide; the caller resolves it with
     #    resolve_product_extraction() after the triage writeback.
+    # Prompt sizes, because a failure here is usually about how much we sent.
+    # These three go out concurrently, so the burst is their sum — that total is
+    # what a per-minute input-token limit sees, not any one of them.
+    _sizes = [("triage", triage_user_prompt), ("costing", costing_user_prompt)]
+    if products_user_prompt:
+        _sizes.append(("products", products_user_prompt))
+    print(
+        f"[INFO] run_id={run_id} | prompt chars: "
+        + ", ".join(f"{n}={len(t):,}" for n, t in _sizes)
+        + f", concurrent total={sum(len(t) for _, t in _sizes):,}"
+    )
+
     executor = ThreadPoolExecutor(
         max_workers=3 if products_user_prompt else 2,
         thread_name_prefix=f"triage-{run_id}",
