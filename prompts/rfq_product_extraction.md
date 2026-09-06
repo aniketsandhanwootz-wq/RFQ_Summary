@@ -335,15 +335,33 @@ A standard may appear in Specification only when a value inside it needs decodin
 
 ### 5.4 AI Internal notes
 
-Team-only. Never sent to a supplier. Fixed mini-structure, plain lines, omit any block that would be empty:
+Team-only. Never sent to a supplier. Fixed mini-structure, omit any block that would be empty.
+
+**The field is rich text, so format it.** Bold the block label, and leave a blank line between blocks so each topic starts clean:
 
 ```
-Sourcing: <process route and capabilities a supplier must have — one or two lines>
-Applicable standards: <every standard governing this line, one per line, designation + role in two or three words, (attached) or (not attached)>
-Attachments: <what the team must attach to this line before it goes out>
-Assumptions: <choices you made that a reviewer might reverse — one per line>
-Context: <anything from internal notes or the thread the team should know — priority, history, commercial posture>
+**Sourcing:** <process route and capabilities a supplier must have — one or two lines>
+
+**Applicable standards:** <every standard governing this line, designation + role in two or three words, (attached) or (not attached)>
+
+**Attachments:** <what the team must attach to this line before it goes out>
+
+**Assumptions:** <choices you made that a reviewer might reverse — one per line>
+
+**Context:** <anything from internal notes or the thread the team should know — priority, history, commercial posture>
 ```
+
+The blank line is not optional. Five topics run together in one paragraph is what makes a note go unread, and the reader is scanning for the one block that concerns them.
+
+**Formatting inside a block**, used sparingly — three or four marks in a whole note, not one per line:
+
+| Mark | Use |
+|---|---|
+| `**text**` | The block label, always. Inside a block, the few words that carry the decision — a grade, a class, a sub-state, a process the line hinges on |
+| `<mark>text</mark>` | Something that gets the line rejected or the quote redone if missed — a disqualifier, a restricted material origin, a standard we do not hold and cannot quote without |
+| `` `text` `` | A designation, part number or filename quoted verbatim — `ISO 4017:2022`, `MT-4471 rev B` |
+
+Emphasis that lands on everything lands on nothing. If a block has no line that matters more than the others, leave it plain.
 
 **No open-questions block.** Queries live in the queries table and the UI renders them beside the product. Restating them here would drift the moment a customer answers one.
 
@@ -442,7 +460,7 @@ NDJSON. One object per line, no wrapping array, no fences, no commentary.
 
 - `structure` ∈ `single | family | system`
 - `quantity_basis` ∈ `annual | one_time | blanket | price_breaks | release_schedule | not_stated`
-- `details` and `internal_notes` are markdown strings with `\n` escapes
+- `details` and `internal_notes` are markdown strings with `\n` escapes. Both fields render as rich text, so `**bold**`, `<mark>` and backticks are live formatting, not literal characters. `internal_notes` carries a blank line (`\n\n`) between every block
 - `dwg_link` and `rep_url` are always `null`, `addl_files` always `[]` — the team attaches files (§5.6)
 - no `queries` key, no `assumptions` key
 
@@ -523,11 +541,15 @@ Quote each tier separately.
 AI Internal notes:
 
 ```
-Sourcing: Cold heading + thread rolling; Cr(VI)-free thick-film passivation line; ISO 16047 friction test capability; certs per shipment. High-volume header shop.
-Applicable standards: ISO 4017:2022 — dimensions (attached). ISO 898-1 — property class. MTL5102A / VDA 235-104.20 — coating (attached). ISO 16047 — friction test.
-Attachments: ISO 4017:2022 from the enquiry; the MTL5102 coating standard. No part drawing was supplied — the descriptor is the specification.
-Assumptions: MTL5102A limited to class ≤ 8.8 — this line is at the limit, treated as applicable. Product grade A inferred from l ≤ 10d per ISO 4017 Table 2. Packaging not specified — standard export packaging assumed.
-Context: Sales lead flagged as priority. Customer is price-conscious and competing on volume commitment.
+**Sourcing:** Cold heading + thread rolling; **Cr(VI)-free** thick-film passivation line; ISO 16047 friction test capability; certs per shipment. High-volume header shop.
+
+**Applicable standards:** `ISO 4017:2022` — dimensions (attached). `ISO 898-1` — property class. `MTL5102A` / `VDA 235-104.20` — coating (attached). `ISO 16047` — friction test.
+
+**Attachments:** `ISO 4017:2022` from the enquiry; the MTL5102 coating standard. No part drawing was supplied — the descriptor is the specification.
+
+**Assumptions:** MTL5102A limited to <mark>class ≤ 8.8 — this line is at the limit</mark>, treated as applicable. Product grade A inferred from l ≤ 10d per ISO 4017 Table 2. Packaging not specified — standard export packaging assumed.
+
+**Context:** Sales lead flagged as priority. Customer is price-conscious and competing on volume commitment.
 ```
 
 One `\--` (Application), covered by an RFQ-level query, so this product emits no query of its own. The dash is satisfied by:
@@ -576,11 +598,15 @@ Quote each tier separately.
 AI Internal notes:
 
 ```
-Sourcing: Cold heading + thread rolling of 120 mm shank; zinc-flake (non-electrolytic) coating line; HE-safe pre-treatment; ISO 16047 friction test.
-Applicable standards: ISO 4014 — dimensions (not attached). ISO 898-1 — property class. MTL5102B — coating (attached). ISO 10683 — zinc flake system. ISO 16047 — friction test.
-Attachments: the MTL5102 coating standard. ISO 4014 did not come with the enquiry and is not held — buy a copy or confirm the edition before the quote goes out.
-Assumptions: B1 treated as default — the Aug 2024 edition of MTL5102 replaced the former "B" with B1 (5 µm, 480 h NSS); B2 is 8 µm, 720 h. Quote differs materially between them. Packaging not specified — standard export packaging assumed.
-Context: Highest-value line in the package by unit price.
+**Sourcing:** Cold heading + thread rolling of 120 mm shank; **zinc-flake (non-electrolytic)** coating line; HE-safe pre-treatment; ISO 16047 friction test.
+
+**Applicable standards:** `ISO 4014` — dimensions <mark>(not attached)</mark>. `ISO 898-1` — property class. `MTL5102B` — coating (attached). `ISO 10683` — zinc flake system. `ISO 16047` — friction test.
+
+**Attachments:** the MTL5102 coating standard. `ISO 4014` did not come with the enquiry and is not held — buy a copy or confirm the edition before the quote goes out.
+
+**Assumptions:** **B1 treated as default** — the Aug 2024 edition of MTL5102 replaced the former "B" with B1 (5 µm, 480 h NSS); B2 is 8 µm, 720 h. Quote differs materially between them. Packaging not specified — standard export packaging assumed.
+
+**Context:** Highest-value line in the package by unit price.
 ```
 
 Two `\--` — Specification and Application. Application is covered by the RFQ-level query above; the coating sub-state is the one worth a customer's time:
@@ -621,8 +647,9 @@ Quote per complete system and per subsystem.
 AI Internal notes:
 
 ```
-Sourcing: Process-skid fabricator with chemical-dosing experience; likely PP/PVDF-wetted pumps and HDPE/FRP tanks — not confirmed.
-Assumptions: Treated as one supplied system rather than three separately sourced items, since the enquiry names it as a system.
+**Sourcing:** Process-skid fabricator with chemical-dosing experience; likely PP/PVDF-wetted pumps and HDPE/FRP tanks — not confirmed.
+
+**Assumptions:** Treated as **one supplied system** rather than three separately sourced items, since the enquiry names it as a system.
 ```
 
 Three `\--`, and the queries behind them: the subsystem specifications and the duty conditions are `Customer` (no defensible assumption), the scope boundary is a `Team` question if the account has a standard supply-only arrangement. The row is honest about being thin.
@@ -647,7 +674,7 @@ Weld wire per AMS 5832; welding to AWS D17.1 and D2.4.
 Sump: heat treatment per AMS 2774 (S1750DP).
 ```
 
-Scope carries the tooling clauses (quoted separately per part; stored and maintained ≥ 5 years; changes only after Wootz approval; maintenance logged), packaging suited to machined aerospace parts, and ex-works delivery. AI Internal notes carries `Applicable standards: AMS 5662, AMS 5832, AMS 2774, ASTM E1417, MIL-STD-1907, AWS D17.1, AWS D2.4` and `Attachments: the confidential drawing folder link, and the parts list workbook` — the team attaches both.
+Scope carries the tooling clauses (quoted separately per part; stored and maintained ≥ 5 years; changes only after Wootz approval; maintenance logged), packaging suited to machined aerospace parts, and ex-works delivery. AI Internal notes carries an **Applicable standards** block (AMS 5662, AMS 5832, AMS 2774, ASTM E1417, MIL-STD-1907, AWS D17.1, AWS D2.4) and, a blank line below it, an **Attachments** block naming the confidential drawing folder link and the parts list workbook — the team attaches both.
 
 ---
 
@@ -670,6 +697,7 @@ Scope carries the tooling clauses (quoted separately per part; stored and mainta
 12c. Never fill `Dwg link`, `Rep URL` or `Addl. files`. Name what to attach under `Attachments:` in AI Internal notes instead.
 12d. Never put a drawing number, part number or print reference in `Product name`.
 12e. Never leave packaging out of Scope, and never drop an instruction the customer wrote in the email.
+12f. Never run the AI Internal notes blocks together. Bold label, blank line between blocks, every time — five topics in one paragraph is a note nobody reads.
 13. Never consolidate across process families or material classes; never force a system into the variant annexure.
 14. Never put a customer-proprietary or purchased standard in `Addl. files`.
 15. Never exceed 50 characters in Product name, or put anything but the quantity in Qty.
@@ -686,5 +714,6 @@ Scope carries the tooling clauses (quoted separately per part; stored and mainta
 4a. Every `Customer` query is technical and about the product itself, with nothing commercial, logistical or administrative among them; every query carries a `query_type`; no question appears twice under different wording; every query passes one of the three tests in §1.2 and is technical. None asks about our file problems, a project name, or anything that reveals how the part is made; commercial terms, PPAP and quantity basis appear only as `Team` queries, never as `Customer`.
 5. No fact appears in two sections of one line; nothing on a line duplicates `common_conditions`.
 6. No bold sub-headings inside RFQ Details; four headings present on every line, Scope covers packaging, and no line carries a drawing or part number in its name or a value in any link field.
+6a. Every AI Internal notes block label is bold and separated from the next block by a blank line, and emphasis inside the blocks is sparing enough to still mean something.
 7. Every provenance value is a single token from the allowed set.
 8. Every standard referenced is either linked or marked `(not attached)` with a query.

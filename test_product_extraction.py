@@ -35,11 +35,11 @@ DETAILS = (
 )
 
 INTERNAL = (
-    "Sourcing: Cold heading + thread rolling; Cr(VI)-free passivation line.\n"
-    "Applicable standards: ISO 4017:2022 — dimensions (attached).\n"
-    "Attachments: ISO 4017 from the enquiry; the MTL5102 coating standard.\n"
-    "Assumptions: MTL5102A treated as applicable at class 8.8, its upper limit.\n"
-    "Context: Price-conscious, competing on volume."
+    "**Sourcing:** Cold heading + thread rolling; **Cr(VI)-free** passivation line.\n\n"
+    "**Applicable standards:** `ISO 4017:2022` — dimensions (attached).\n\n"
+    "**Attachments:** ISO 4017 from the enquiry; the MTL5102 coating standard.\n\n"
+    "**Assumptions:** MTL5102A treated as applicable at <mark>class 8.8, its upper limit</mark>.\n\n"
+    "**Context:** Price-conscious, competing on volume."
 )
 
 NDJSON = "\n".join(
@@ -117,7 +117,7 @@ NDJSON = "\n".join(
                 "structure": "system",
                 "quantity": 4,
                 "details": DETAILS,
-                "internal_notes": "Sourcing: Process-skid fabricator.",
+                "internal_notes": "**Sourcing:** Process-skid fabricator.",
             },
             indent=2,
         ),
@@ -218,7 +218,7 @@ def test_parse() -> bool:
         ok &= _check(f"[{label}] qty is a plain string", screw.quantity == "160,000 / 325,000 / 650,000 pcs")
         ok &= _check(f"[{label}] quantity_basis kept", screw.quantity_basis == "price_breaks")
         ok &= _check(f"[{label}] numeric qty coerced", system.quantity == "4", system.quantity)
-        ok &= _check(f"[{label}] internal notes captured", "Sourcing:" in screw.internal_notes)
+        ok &= _check(f"[{label}] internal notes captured", "**Sourcing:**" in screw.internal_notes)
         ok &= _check(f"[{label}] target price verbatim", family.target_price == "$2.68 - FOB India")
         ok &= _check(f"[{label}] absent target price is None", screw.target_price is None)
         ok &= _check(f"[{label}] annexure by reference", bool(family.annexure and family.annexure.by_reference))
@@ -442,6 +442,116 @@ def test_query_budget_and_merging() -> bool:
     return ok
 
 
+def test_response_text_handles_thinking_blocks() -> bool:
+    """With thinking on, LangChain returns a LIST of blocks, not a string.
+
+    Calling .strip() on that list raised AttributeError and killed every task
+    in production — the model had answered fine, we just could not read it.
+    """
+    from rfq_summary.llm import response_text as f
+
+    ndjson = '{"type":"product","index":1,"name":"Hex Bolt"}'
+    # The exact shape that crashed: thinking block first, answer after.
+    thinking_then_text = [
+        {"type": "thinking", "thinking": "Let me work through the line items...",
+         "signature": "sig"},
+        {"type": "text", "text": ndjson},
+    ]
+
+    class _Block:
+        def __init__(self, type_, text=None):
+            self.type, self.text = type_, text
+
+    cases = [
+        ("plain string still works", "hello  ", "hello"),
+        ("thinking + text", thinking_then_text, ndjson),
+        ("text-only list", [{"type": "text", "text": "abc"}], "abc"),
+        ("several text blocks join", [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}], "ab"),
+        ("thinking alone yields nothing", [{"type": "thinking", "thinking": "x"}], ""),
+        ("list of bare strings", ["a", "b"], "ab"),
+        ("None", None, ""),
+        ("empty list", [], ""),
+        ("tool_use ignored", [{"type": "tool_use", "name": "x"}, {"type": "text", "text": "ok"}], "ok"),
+        ("object-style blocks", [_Block("thinking"), _Block("text", "ok")], "ok"),
+        ("malformed block skipped", [{"type": "text"}, {"type": "text", "text": "ok"}], "ok"),
+    ]
+    ok = True
+    for label, given, want in cases:
+        got = f(given)
+        ok &= _check(label, got == want, f"got {got!r}, want {want!r}")
+
+    # Reasoning must never reach the NDJSON parser.
+    ok &= _check("thinking text never leaks into the answer",
+                 "work through" not in f(thinking_then_text))
+
+    # And the result is parseable, which is the whole point.
+    ok &= _check("the recovered text parses",
+                 len(parse_product_extraction(f(thinking_then_text)).products) == 1)
+    return ok
+
+
+def test_adaptive_thinking_gating() -> bool:
+    """Adaptive thinking goes only to models that accept it — the rest 400 on it."""
+    from rfq_summary.llm import _supports_adaptive_thinking as ok_for
+
+    accepts = ["claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6",
+               "claude-sonnet-5", "claude-sonnet-4-6", "claude-fable-5-1"]
+    rejects = ["claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-3-haiku-20240307",
+               "claude-sonnet-4-5", "claude-3-5-sonnet-20241022", ""]
+
+    ok = True
+    for m in accepts:
+        ok &= _check(f"{m} gets adaptive thinking", ok_for(m))
+    for m in rejects:
+        ok &= _check(f"{m or '<empty>'} does not", not ok_for(m))
+    return ok
+
+
+def test_internal_notes_formatting() -> bool:
+    """§5.4 / hard rule 12f — bold block labels, one blank line between topics."""
+    def one(notes):
+        nd = json.dumps({"type": "product", "index": 1, "name": "Hex Bolt M10",
+                         "details": "Specification:\nx", "internal_notes": notes})
+        return parse_product_extraction(nd)
+
+    formatted = ("**Sourcing:** Cold heading + thread rolling.\n\n"
+                 "**Applicable standards:** `ISO 4017:2022` — dimensions (attached).\n\n"
+                 "**Attachments:** the MTL5102 coating standard.\n\n"
+                 "**Assumptions:** Class 8.8 treated as the limit.\n\n"
+                 "**Context:** Priority lead.")
+    r = one(formatted)
+    ok = _check("well-formatted notes pass clean", not r.validation_warnings, str(r.validation_warnings))
+
+    # Blocks run together: the second one has no blank line above it.
+    r = one("**Sourcing:** Cold heading.\n**Assumptions:** Class 8.8 assumed.")
+    ok &= _check("run-together block flagged",
+                 any("runs into the block above" in w for w in r.validation_warnings),
+                 str(r.validation_warnings))
+    ok &= _check("the flagged block is named",
+                 any("'Assumptions'" in w for w in r.validation_warnings), str(r.validation_warnings))
+    ok &= _check("the block above is not flagged",
+                 not any("'Sourcing'" in w for w in r.validation_warnings), str(r.validation_warnings))
+
+    # Plain labels are the old format — every one is flagged, none silently rewritten.
+    r = one("Sourcing: Cold heading.\n\nAssumptions: Class 8.8 assumed.")
+    ok &= _check("unbolded labels flagged", len([w for w in r.validation_warnings
+                                                 if "label is not bold" in w]) == 2,
+                 str(r.validation_warnings))
+
+    # A label word inside a sentence is not a block heading.
+    r = one("**Sourcing:** We read the Attachments: list in the thread.\n\n**Context:** Priority.")
+    ok &= _check("mid-sentence label ignored", not r.validation_warnings, str(r.validation_warnings))
+
+    # A single block needs no separator, and empty notes are not a defect.
+    ok &= _check("single block passes", not one("**Sourcing:** Cold heading.").validation_warnings)
+    ok &= _check("empty notes pass", not one("").validation_warnings)
+
+    # Warnings only — the note reaches Glide exactly as the model wrote it.
+    bad = "**Sourcing:** Cold heading.\n**Assumptions:** Class 8.8 assumed."
+    ok &= _check("notes never rewritten", one(bad).products[0].internal_notes == bad)
+    return ok
+
+
 def test_truncation_names_the_lost_line() -> bool:
     """A real 9-line RFQ truncated mid-way through the ninth product."""
     objs = [{"type": "rfq_header", "project": "P", "line_count_expected": 9}]
@@ -614,6 +724,9 @@ if __name__ == "__main__":
             test_banned_queries(),
             test_query_typing(),
             test_query_budget_and_merging(),
+            test_internal_notes_formatting(),
+            test_adaptive_thinking_gating(),
+            test_response_text_handles_thinking_blocks(),
             test_mismatch_is_reported(),
             test_garbage_is_not_fatal(),
             test_truncation_names_the_lost_line(),
