@@ -28,7 +28,6 @@ from .schema import (
 
 MAX_NAME_CHARS = 50
 # §1.2 — a customer reads these. Four is the ceiling for a whole RFQ.
-MAX_QUERIES_PER_RFQ = 4  # Customer queries only; Team queries are uncapped.
 
 # §1.2 — four kinds of question that must never reach a customer. Checked here
 # because a single bad query is visible to the customer the moment it is sent.
@@ -205,16 +204,11 @@ def _validate(result: ProductExtractionResult) -> List[str]:
         if not p.placeholder_count() and result.queries_for(p.index):
             warnings.append(f"line {p.index}: has query rows but no '\\--' marker in the details")
 
-    # §1.2 — at most four Customer questions for the whole RFQ. Team queries are
-    # internal and uncapped.
+    # §1.2 — no cap on either type. The bar is the subject, not the count: a
+    # Customer query must be technical and about the product itself.
     customer_queries = [q for q in queries if q.is_for_customer()]
-    if len(customer_queries) > MAX_QUERIES_PER_RFQ:
-        warnings.append(
-            f"{len(customer_queries)} Customer queries emitted; the cap is {MAX_QUERIES_PER_RFQ} for the "
-            f"whole RFQ — keep the ones with the largest price impact and make the rest Team"
-        )
 
-    # §1.2 — assumable questions must be typed Team, never put to a customer.
+    # Commercial, logistical and administrative questions are Team, always.
     for q in customer_queries:
         text = " ".join((q.description or "").split())
         for pattern, reason in TEAM_ONLY_QUERY_PATTERNS:

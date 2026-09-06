@@ -79,7 +79,11 @@ If a gap passes none of these, it is not a query at all. Assume it, or let it go
 - **`Team`** — the team can settle it themselves, or it is safely assumable. Incoterm and currency, PPAP level, quantity basis, packaging standard, delivery point, lead-time expectation, tooling ownership, anything answerable from our own records or a defensible default. Write it as a note to a colleague: say what you assumed and what would change if the assumption is wrong. It never reaches the customer.
 - **`Customer`** — no defensible assumption exists, and getting it wrong makes the quote meaningless, unsafe, or the wrong part. Only these are put to the customer.
 
-**At most four `Customer` queries for the whole RFQ.** Not four per line — four in total, however many lines there are. A customer answers a short, sharp list and skims a long one. Rank candidates by how much money rides on the answer and keep the top four; the rest become `Team`. `Team` queries have no cap, but each one still has to be worth a colleague's time.
+**There is no cap on how many queries you may raise — the bar is what each one is about, not how many there are.** A `Customer` query must be **technical and about the product itself**: its material or grade, dimensions or tolerances, finish or coating, heat treatment, testing and acceptance, governing standard or revision, or a conflict between two sources describing the part. Ten questions of that kind on a ten-line package is a good RFQ. One question about currency is a bad one.
+
+Nothing commercial, logistical or administrative is ever a `Customer` query — incoterm, payment, packaging, delivery, quantity basis, PPAP, project references. Those are `Team`, always, however many there are.
+
+So the discipline is on the subject and not the count: rank by how much money rides on the answer, put the ones that pass the three tests to the customer, and route the rest to the team. If you find yourself with a long `Customer` list, check that every one is genuinely about the part — that is usually where the excess is.
 
 **Three things are never a query of either type.**
 
@@ -448,7 +452,7 @@ NDJSON. One object per line, no wrapping array, no fences, no commentary.
 {"type":"query","query_ref":"Q1","product_ref":[1],"query_type":"Customer","section":"specification","description":""}
 ```
 
-- `query_type` ∈ `Team | Customer` — see §1.2. At most four `Customer` queries for the whole RFQ.
+- `query_type` ∈ `Team | Customer` — see §1.2. No cap on either; a `Customer` query must be technical and about the product itself.
 - `product_ref` is a list of the product `index` values the question covers — `[1]`, or `[1, 4]` when one question applies to several lines, or `null` when it blocks every line. The pipeline turns it into the comma-separated `Product id` on the row. A bare integer is still accepted.
 - `section` ∈ `specification | scope | application | standards | additional_note | quantity` — it is what the `\--` markers are validated against, and what tells the reviewer which part of the line an answer unblocks. `standards` still applies even though the standards list now lives in AI Internal notes.
 - `query_ref` is yours, unique within the run, for validation only — the database assigns the real `Query ID`
@@ -662,7 +666,7 @@ Scope carries the tooling clauses (quoted separately per part; stored and mainta
 11. Never put queries or assumptions in the product object, and never populate `Query Response`.
 12. Never join two questions into one query row.
 12a. Every query is technical, carries a `query_type` of `Team` or `Customer`, and passes one of the three tests in §1.2. Never emit a query of either type about our own file problems, a project name or anything administrative, or anything that reveals how the part is made.
-12b. Never exceed four `Customer` queries for the whole RFQ, and never ask one question twice — one row carrying every line index it covers. Anything the team can settle or safely assume is `Team`, never `Customer`.
+12b. Never put a commercial, logistical or administrative question to a customer — incoterm, payment, packaging, delivery, quantity basis, PPAP and project references are `Team`, always. A `Customer` query is technical and about the product itself. Never ask one question twice — one row carrying every line index it covers.
 12c. Never fill `Dwg link`, `Rep URL` or `Addl. files`. Name what to attach under `Attachments:` in AI Internal notes instead.
 12d. Never put a drawing number, part number or print reference in `Product name`.
 12e. Never leave packaging out of Scope, and never drop an instruction the customer wrote in the email.
@@ -679,7 +683,7 @@ Scope carries the tooling clauses (quoted separately per part; stored and mainta
 2. Every `\--` has exactly one query row covering that product and section — directly or via a `product_ref: null` row; no two query rows ask the same thing; every query row is a single question; no `Query Response` is populated.
 3. No name exceeds 50 characters; every Qty is quantity only.
 4. No customer, contact or end-customer name in any field.
-4a. Four `Customer` queries or fewer for the whole RFQ; every query carries a `query_type`; no question appears twice under different wording; every query passes one of the three tests in §1.2 and is technical. None asks about our file problems, a project name, or anything that reveals how the part is made; commercial terms, PPAP and quantity basis appear only as `Team` queries, never as `Customer`.
+4a. Every `Customer` query is technical and about the product itself, with nothing commercial, logistical or administrative among them; every query carries a `query_type`; no question appears twice under different wording; every query passes one of the three tests in §1.2 and is technical. None asks about our file problems, a project name, or anything that reveals how the part is made; commercial terms, PPAP and quantity basis appear only as `Team` queries, never as `Customer`.
 5. No fact appears in two sections of one line; nothing on a line duplicates `common_conditions`.
 6. No bold sub-headings inside RFQ Details; four headings present on every line, Scope covers packaging, and no line carries a drawing or part number in its name or a value in any link field.
 7. Every provenance value is a single token from the allowed set.

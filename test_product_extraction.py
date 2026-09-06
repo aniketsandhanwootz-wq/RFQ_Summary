@@ -354,23 +354,37 @@ def test_query_typing() -> bool:
     r = one("MTL5102B has two sub-states: B1 (5 um, 480 h) and B2 (8 um, 720 h). Which applies?", "Customer")
     ok &= _check("a real spec question stays Customer", not r.validation_warnings, str(r.validation_warnings))
 
-    # The cap counts Customer queries only.
+    # Neither type is capped: the bar is the subject, not the count.
     objs = [{"type": "product", "index": 1, "name": "Part", "details": "Specification:\nx\n\\--"}]
+    customer_texts = [
+        "The drawing calls out 42CrMo4 but the enquiry line says EN8. Which material governs?",
+        "Thread runout is untoleranced on the print. Is a 2 mm undercut acceptable?",
+        "Surface finish is shown as Ra 1.6 on one view and Ra 3.2 on another. Which applies?",
+        "Should the flange face be machined after heat treatment, or before?",
+        "Is a hardness check on every batch required, or is a certificate of conformity enough?",
+    ]
+    team_texts = [
+        "Confirm the incoterm to quote against for this account.",
+        "Payment terms are not stated; use the standing account terms.",
+        "Packaging assumed as standard export cartons on pallets.",
+        "Delivery window taken as eight weeks from order.",
+        "Quantities read as a one-time requirement, not annual usage.",
+        "Freight assumed ex-works our works; buyer nominates the carrier.",
+    ]
     objs += [{"type": "query", "query_ref": f"C{i}", "product_ref": [1], "query_type": "Customer",
-              "section": "specification", "description": f"Drawing rev {i} conflicts. Which governs part {i}?"}
-             for i in range(5)]
+              "section": "specification", "description": t} for i, t in enumerate(customer_texts)]
     objs += [{"type": "query", "query_ref": f"T{i}", "product_ref": [1], "query_type": "Team",
-              "section": "scope", "description": f"Assumption {i} recorded for the account."} for i in range(6)]
+              "section": "scope", "description": t} for i, t in enumerate(team_texts)]
     r = parse_product_extraction("\n".join(json.dumps(o) for o in objs))
-    ok &= _check("five Customer queries flagged",
-                 any("5 Customer queries" in w for w in r.validation_warnings), str(r.validation_warnings))
+    ok &= _check("five technical Customer queries not flagged", not r.validation_warnings,
+                 str(r.validation_warnings))
     ok &= _check("six Team queries not flagged", len(r.team_queries()) == 6)
     ok &= _check("split counted correctly", len(r.customer_queries()) == 5)
     return ok
 
 
 def test_query_budget_and_merging() -> bool:
-    """§1.2 — four questions per RFQ, and one question covering several lines is one row."""
+    """§1.2 — no query cap, and one question covering several lines is one row."""
     def build(queries):
         objs = [{"type": "product", "index": i, "name": f"Part {i}",
                  "details": "Specification:\nx\n\\--"} for i in (1, 2, 3, 4)]
@@ -400,20 +414,29 @@ def test_query_budget_and_merging() -> bool:
     ok &= _check("distinct questions left alone", not any("ask the same thing" in w for w in r.validation_warnings),
                  str(r.validation_warnings))
 
-    # Five questions is over the cap.
-    five = [{"type": "query", "query_ref": f"Q{i}", "product_ref": [i % 4 + 1], "section": "standards",
-             "description": f"Drawing rev {i} conflicts with the enquiry. Which revision governs part {i}?"}
-            for i in range(5)]
-    r = parse_product_extraction(build(five))
-    ok &= _check("over-cap flagged", any("the cap is 4" in w for w in r.validation_warnings))
+    # Eight distinct technical questions are fine — there is no count to trip.
+    distinct = [
+        "The drawing calls out 42CrMo4 but the enquiry line says EN8. Which material governs?",
+        "Thread runout is untoleranced on the print. Is a 2 mm undercut acceptable?",
+        "Surface finish is shown as Ra 1.6 on one view and Ra 3.2 on another. Which applies?",
+        "Should the flange face be machined after heat treatment, or before?",
+        "Is a hardness check on every batch required, or is a certificate of conformity enough?",
+        "Zinc plating is specified without a thickness class. Confirm 8 um to ISO 4042.",
+        "Concentricity between the bore and the outer diameter is unstated. Is 0.05 mm TIR workable?",
+        "Two revisions of print 4471 are attached, C and D. Which revision governs?",
+    ]
+    eight = [{"type": "query", "query_ref": f"Q{i}", "product_ref": [i % 4 + 1], "section": "standards",
+              "description": t} for i, t in enumerate(distinct)]
+    r = parse_product_extraction(build(eight))
+    ok &= _check("eight technical questions not flagged", not r.validation_warnings, str(r.validation_warnings))
 
-    # Four is fine, and one row may carry several lines.
+    # One row may carry several lines.
     r = parse_product_extraction(build([
         {"type": "query", "query_ref": "Q1", "product_ref": [1, 4], "section": "specification", "description": same_a},
         {"type": "query", "query_ref": "Q3", "product_ref": [2], "section": "specification", "description": other},
         {"type": "query", "query_ref": "Q5", "product_ref": [3], "section": "specification", "description": third},
     ]))
-    ok &= _check("at-cap run is clean", not r.validation_warnings, str(r.validation_warnings))
+    ok &= _check("merged run is clean", not r.validation_warnings, str(r.validation_warnings))
     ok &= _check("merged query covers both lines", r.queries[0].product_refs == [1, 4])
     ok &= _check("queries_for finds a merged query", r.queries_for(4)[0].query_ref == "Q1")
     return ok
