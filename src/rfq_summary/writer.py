@@ -8,7 +8,6 @@ from .config import Settings
 from .schema import InputPayload, OutputPayload, QueryPayload, TriageOutputPayload, RfqClassificationInputPayload, RfqClassificationOutputPayload, RfqRegenerateTriageInputPayload, RfqRegenerateTriageOutputPayload, RfqQueryInputPayload, RfqQueryOutputPayload
 from .glide_client import glide_upsert_zai_response_by_rfq_id, glide_update_all_rfq_triage_outputs, glide_update_prospect_rfq_classification, glide_add_zai_regenerate_row, glide_add_product_rows, glide_add_query_rows
 from .gsheet_logger import append_rows, build_chunked_log_rows
-from .product_extraction import MAX_QUERIES_PER_RFQ
 
 
 def _print_terminal(out: OutputPayload) -> None:
@@ -192,11 +191,12 @@ def _write_extracted_products(settings: Settings, rfq_row_id: str, out: TriageOu
     # Queries are written after the products so each one can carry its Product id.
     queries_written = 0
     if extraction.queries:
-        if len(extraction.queries) > MAX_QUERIES_PER_RFQ:
-            print(
-                f"[WARN] run_id={out.run_id} | {len(extraction.queries)} queries for this RFQ; "
-                f"the cap is {MAX_QUERIES_PER_RFQ} — all are written, but the customer sees them all"
-            )
+        customer = len(extraction.customer_queries())
+        print(
+            f"[INFO] run_id={out.run_id} | {customer} Customer / "
+            f"{len(extraction.team_queries())} Team queries"
+        )
+
         try:
             queries_written = glide_add_query_rows(settings, rfq_row_id, extraction.queries, resolved)
             print(f"[INFO] run_id={out.run_id} | wrote {queries_written} query row(s)")
@@ -267,6 +267,8 @@ def _product_log_fields(out: TriageOutputPayload, products_written: int, queries
         "products_extracted": str(len(extraction.products)),
         "products_written": str(products_written),
         "queries_extracted": str(len(extraction.queries)),
+        "queries_customer": str(len(extraction.customer_queries())),
+        "queries_team": str(len(extraction.team_queries())),
         "queries_written": str(queries_written),
         "products_json": json.dumps(
             [p.model_dump(mode="json") for p in extraction.products],

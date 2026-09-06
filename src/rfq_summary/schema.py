@@ -377,6 +377,8 @@ class ExtractedQuery(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     query_ref: _LooseStr = ""
+    # Team: the team settles or safely assumes it. Customer: it must be asked.
+    query_type: _LooseStr = "Customer"
     # The product indexes this question covers. One question that applies to
     # several lines is one row, not one per line. Empty = blocks every line.
     product_refs: List[int] = Field(default_factory=list)
@@ -421,13 +423,23 @@ class ExtractedQuery(BaseModel):
         if data.get("photo") is None:
             data["photo"] = []
 
-        # A response is the customer's to give; never accept one from the model.
+        # Normalise the type to exactly "Team" or "Customer"; anything unrecognised
+        # falls back to Customer so a mislabelled query is seen, not silently buried.
+        raw_type = data.pop("type", None) if data.get("type") not in (None, "query") else None
+        raw_type = data.get("query_type") or data.get("Type") or raw_type or "Customer"
+        token = str(raw_type).strip().lower()
+        data["query_type"] = "Team" if token in ("team", "internal") else "Customer"
+
+        # A response is the customer's or the team's to give, never the model's.
         data.pop("response", None)
         data.pop("Query Response", None)
         return data
 
     def is_rfq_level(self) -> bool:
         return not self.product_refs
+
+    def is_for_customer(self) -> bool:
+        return self.query_type == "Customer"
 
     def is_emittable(self) -> bool:
         return bool((self.description or "").strip())
@@ -618,6 +630,12 @@ class ProductExtractionResult(BaseModel):
 
     def rfq_level_queries(self) -> List[ExtractedQuery]:
         return [q for q in self.queries if q.is_rfq_level()]
+
+    def customer_queries(self) -> List[ExtractedQuery]:
+        return [q for q in self.queries if q.is_for_customer()]
+
+    def team_queries(self) -> List[ExtractedQuery]:
+        return [q for q in self.queries if not q.is_for_customer()]
 
 
 class TriageOutputPayload(BaseModel):

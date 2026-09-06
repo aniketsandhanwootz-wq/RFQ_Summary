@@ -451,6 +451,7 @@ def glide_add_query_rows(
 
     product_id_col = (settings.glide_col_query_product_id or "").strip()
     photo_col = (settings.glide_col_query_photo or "").strip()
+    type_col = (settings.glide_col_query_type or "").strip()
 
     mutations: list[Dict[str, Any]] = []
     for query in queries:
@@ -458,6 +459,9 @@ def glide_add_query_rows(
 
         if rfq_id_col and (rfq_row_id or "").strip():
             column_values[rfq_id_col] = rfq_row_id.strip()
+
+        if type_col:
+            column_values[type_col] = query.query_type
 
         if product_id_col and query.product_refs:
             # One question covering several lines is one row carrying all their ids.

@@ -20,13 +20,18 @@ followed by the `query` objects it blocks, then the RFQ-level queries, then an
 steps because the second depends on the first:
 
 1. Each line item becomes a row in **ALL Product** — `Product name`, `Qty`,
-   `RFQ Details` (five-section markdown), `AI Internal notes` (team-only),
-   `Target price`, `Dwg link`, `Rep URL`, `Addl. files`, plus `srNo` and
-   `acceptedProduct`. Glide returns a Row ID per row.
+   `RFQ Details` (four-section markdown: Specification, Scope, Application,
+   Additional note), `AI Internal notes` (team-only — sourcing, applicable
+   standards, what to attach, assumptions, context), `Target price`, plus `srNo`
+   and `acceptedProduct`. `Dwg link`, `Rep URL` and `Addl. files` are deliberately
+   left empty: attaching files is the team's step in the app, and the model names
+   what to attach under `Attachments:` in the internal notes instead. Glide returns a Row ID per row.
 2. Each open question becomes a row in the **Queries** table, carrying the Row ID
    of every line it covers in `Product id`, comma-separated — one question that
-   applies to several lines is one row, not one per line. At most four queries go
-   to a customer for a whole RFQ. `Query Description` is written the way the
+   applies to several lines is one row, not one per line. Every query carries a
+   `Type`: `Team` for anything the team can settle or safely assume (incoterm,
+   PPAP, quantity basis, packaging), `Customer` for what genuinely cannot be
+   assumed. At most four `Customer` queries per RFQ; `Team` is uncapped. `Query Description` is written the way the
    team would ask the customer — one question per row, options stated where there
    are options, a reason only where it is a recommendation. An RFQ-level question (`product_ref:
    null`) is linked to the RFQ only. `Query ID` is database-assigned and
