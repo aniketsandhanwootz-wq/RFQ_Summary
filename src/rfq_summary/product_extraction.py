@@ -74,6 +74,37 @@ TEAM_ONLY_QUERY_PATTERNS: List[Tuple[str, str]] = [
 # §5.1 — a name that is only a number, or a pointer to somewhere else, is not a name.
 FORBIDDEN_NAMES = {"test", "fastener", "as per attached excel", "as per drawing", "as per excel"}
 
+# §5.4 — the fixed mini-structure of AI Internal notes. Each block starts a new
+# topic, so each needs a bold label and a blank line above it.
+NOTE_BLOCK_LABELS = ("Sourcing", "Applicable standards", "Attachments", "Assumptions", "Context")
+_NOTE_BLOCK_RE = re.compile(
+    r"^[ \t]*(?:\*\*)?(" + "|".join(NOTE_BLOCK_LABELS) + r")(?:\*\*)?[ \t]*:",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _unseparated_note_blocks(notes: str) -> List[Tuple[str, str]]:
+    """
+    Find internal-notes blocks that run into the one above, or whose label is not
+    bold. Returns (label, what is wrong) so the warning can say which block.
+
+    The first block needs no blank line above it, and a label the model wrote
+    mid-sentence is not a block — only a label starting its own line counts.
+    """
+    text = notes or ""
+    problems: List[Tuple[str, str]] = []
+    for i, match in enumerate(_NOTE_BLOCK_RE.finditer(text)):
+        label = match.group(1)
+        faults = []
+        if not text[match.start():match.end()].lstrip().startswith("**"):
+            faults.append("label is not bold")
+        # Everything between the previous newline-run and this label.
+        if i and not text[: match.start()].endswith("\n\n"):
+            faults.append("runs into the block above")
+        if faults:
+            problems.append((label, " and ".join(faults)))
+    return problems
+
 
 def _strip_code_fences(text: str) -> str:
     """
@@ -181,6 +212,15 @@ def _validate(result: ProductExtractionResult) -> List[str]:
     for p in products:
         if "**" in (p.details or ""):
             warnings.append(f"line {p.index}: RFQ Details contains bold sub-headings")
+
+    # §5.4 / hard rule 12f — internal notes blocks are bold-labelled and blank-line
+    # separated. Warn only: the text is the team's to read, never ours to rewrite.
+    for p in products:
+        for label, unseparated in _unseparated_note_blocks(p.internal_notes or ""):
+            warnings.append(
+                f"line {p.index}: AI Internal notes '{label}' block "
+                f"{unseparated} — bold the label and leave a blank line before it"
+            )
 
     # §5.3 / §9 — every \-- maps to exactly one query row, and vice versa.
     placeholders = sum(p.placeholder_count() for p in products)
