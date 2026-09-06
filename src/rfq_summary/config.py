@@ -180,9 +180,12 @@ class Settings(BaseSettings):
     glide_col_product_details: str = Field(default="K03pz", alias="GLIDE_COL_PRODUCT_DETAILS")
     glide_col_product_rfq_id: str = Field(default="3E2xY", alias="GLIDE_COL_PRODUCT_RFQ_ID")
     glide_col_product_target_price: str = Field(default="hgVgd", alias="GLIDE_COL_PRODUCT_TARGET_PRICE")
-    glide_col_product_dwg_link: str = Field(default="f4QCb", alias="GLIDE_COL_PRODUCT_DWG_LINK")
-    glide_col_product_rep_url: str = Field(default="LXcW2", alias="GLIDE_COL_PRODUCT_REP_URL")
-    glide_col_product_addl_files: str = Field(default="JR0Lx", alias="GLIDE_COL_PRODUCT_ADDL_FILES")
+    # Link fields are the team's to fill in the app, where they can see what they are
+    # attaching. The model names what to attach in AI Internal notes instead, so these
+    # are left unset; set the column ids to write them again.
+    glide_col_product_dwg_link: str = Field(default="", alias="GLIDE_COL_PRODUCT_DWG_LINK")
+    glide_col_product_rep_url: str = Field(default="", alias="GLIDE_COL_PRODUCT_REP_URL")
+    glide_col_product_addl_files: str = Field(default="", alias="GLIDE_COL_PRODUCT_ADDL_FILES")
     # Team-only notes: sourcing route, assumptions, context. Never sent to a supplier.
     glide_col_product_internal_notes: str = Field(default="vizbU", alias="GLIDE_COL_PRODUCT_INTERNAL_NOTES")
     # Line number in the customer's own ordering. Set to "" to leave the column alone.
@@ -200,6 +203,8 @@ class Settings(BaseSettings):
     glide_col_query_rfq_id: str = Field(default="Name", alias="GLIDE_COL_QUERY_RFQ_ID")
     glide_col_query_product_id: str = Field(default="pfIJe", alias="GLIDE_COL_QUERY_PRODUCT_ID")
     glide_col_query_description: str = Field(default="Ucd5N", alias="GLIDE_COL_QUERY_DESCRIPTION")
+    # Team or Customer — decides whether a question ever reaches the customer.
+    glide_col_query_type: str = Field(default="W6l3l", alias="GLIDE_COL_QUERY_TYPE")
     # Query Photo is off: the model has no reliable way to pick the attachment that
     # shows an ambiguity. Set this to KbO6i to start writing it.
     glide_col_query_photo: str = Field(default="", alias="GLIDE_COL_QUERY_PHOTO")

@@ -28,7 +28,7 @@ from .schema import (
 
 MAX_NAME_CHARS = 50
 # §1.2 — a customer reads these. Four is the ceiling for a whole RFQ.
-MAX_QUERIES_PER_RFQ = 4
+MAX_QUERIES_PER_RFQ = 4  # Customer queries only; Team queries are uncapped.
 
 # §1.2 — four kinds of question that must never reach a customer. Checked here
 # because a single bad query is visible to the customer the moment it is sent.
@@ -51,21 +51,25 @@ BANNED_QUERY_PATTERNS: List[Tuple[str, str]] = [
      "asks for something for our own records"),
     (r"\btrack (it|this) internally\b",
      "asks for something for our own tracking"),
-    # Commercial terms: we hold these already.
-    (r"\b(currency|incoterm|inco-?term|payment terms|delivery address|billing)\b",
-     "asks a commercial term — we hold these, they are never asked"),
+
     # The supplier model is ours, not theirs.
     (r"\b(supplier|suppliers|vendor|vendors|sub-?contractor|partner factory|our factory partner)\b",
      "names a supplier or vendor — to the customer we are the manufacturer"),
-    # On the assume list. A genuine contradiction ("the drawing says Level 3 but the
-    # email says Level 2") reads differently and is not caught by this.
+]
+
+# §1.2 — assumable, so they belong to the team. Not banned outright: the team still
+# wants them recorded, just never put to a customer.
+TEAM_ONLY_QUERY_PATTERNS: List[Tuple[str, str]] = [
+    (r"\b(currency|incoterm|inco-?term|payment terms|delivery address|billing)\b",
+     "a commercial term — we hold these, so this is a Team query"),
     (r"\b(ppap|first[- ]article|fai|isir)\b.{0,50}\b(required|require|needed|need|applicable|apply|which level|what level|level\?)",
-     "asks whether PPAP applies — assumed not included and quotable separately"),
-    # On the assume list.
+     "PPAP is assumed not included and quotable separately — a Team query"),
     (r"\b(annual|one-?time|blanket|per year|every \d+ months?)\b.{0,60}\b(basis|usage|requirement|quantit)",
-     "asks for quantity basis, which is assumed and covered in the quote"),
+     "quantity basis is covered in the quote — a Team query"),
     (r"\b(quantit\w+|volume)\b.{0,40}\b(one-?time|annual|recurring|repeat|blanket)\b",
-     "asks for quantity basis, which is assumed and covered in the quote"),
+     "quantity basis is covered in the quote — a Team query"),
+    (r"\b(packaging|packing|palleti[sz]|labell?ing)\b.{0,40}\b(requirement|standard|preference|how|what)",
+     "packaging has a defensible default — a Team query"),
 ]
 
 # §5.1 — a name that is only a number, or a pointer to somewhere else, is not a name.
@@ -201,12 +205,24 @@ def _validate(result: ProductExtractionResult) -> List[str]:
         if not p.placeholder_count() and result.queries_for(p.index):
             warnings.append(f"line {p.index}: has query rows but no '\\--' marker in the details")
 
-    # §1.2 — at most four questions go to a customer for the whole RFQ.
-    if len(queries) > MAX_QUERIES_PER_RFQ:
+    # §1.2 — at most four Customer questions for the whole RFQ. Team queries are
+    # internal and uncapped.
+    customer_queries = [q for q in queries if q.is_for_customer()]
+    if len(customer_queries) > MAX_QUERIES_PER_RFQ:
         warnings.append(
-            f"{len(queries)} queries emitted; the cap is {MAX_QUERIES_PER_RFQ} for the whole RFQ — "
-            f"keep the ones with the largest price impact and drop the rest"
+            f"{len(customer_queries)} Customer queries emitted; the cap is {MAX_QUERIES_PER_RFQ} for the "
+            f"whole RFQ — keep the ones with the largest price impact and make the rest Team"
         )
+
+    # §1.2 — assumable questions must be typed Team, never put to a customer.
+    for q in customer_queries:
+        text = " ".join((q.description or "").split())
+        for pattern, reason in TEAM_ONLY_QUERY_PATTERNS:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                warnings.append(
+                    f"query {q.query_ref or '?'} is typed Customer but asks {reason}: {text[:80]!r}"
+                )
+                break
 
     # §8 — the same question must not be asked twice, verbatim or reworded. One
     # question covering several lines is one row carrying all their indexes.
@@ -228,7 +244,7 @@ def _validate(result: ProductExtractionResult) -> List[str]:
         if (q.description or "").count("?") > 1:
             warnings.append(f"query {q.query_ref or '?'} asks more than one question")
 
-    # §1.2 — questions that must never be put to a customer.
+    # §1.2 — three kinds of question that are never emitted, of either type.
     for q in queries:
         text = " ".join((q.description or "").split())
         for pattern, reason in BANNED_QUERY_PATTERNS:
